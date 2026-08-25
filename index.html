@@ -288,8 +288,8 @@
         let html5QrCode = null;
         let scannerRunning = false;
 
-        // Google Sheets export URL (CSV format)
-        const GOOGLE_SHEETS_URL = 'https://docs.google.com/spreadsheets/d/1_qDeXNG0sFifbWjF0XknSsS8XVMYNhsn/export?format=csv';
+        // Google Apps Script API (JSON format) - Sin problemas CORS
+        const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxzWxpcUiZvuVpoZb8nz6B7LDTtsm7mpHkcK7MITsvGHf1dEpiuxuQOIWPlG3f07mIb/exec';
         const SYNC_INTERVAL = 5 * 60 * 1000; // Sincronizar cada 5 minutos
         const DATA_LAST_SYNC = 'inventoryDataLastSync';
 
@@ -342,28 +342,15 @@
             { key: 'as400', label: 'Código AS400' },
         ];
 
-        // ---- SYNC FROM GOOGLE SHEETS ----
+        // ---- SYNC FROM GOOGLE SHEETS (via Apps Script JSON API) ----
         function syncFromGoogleSheets() {
             const syncBtn = document.getElementById('sync-btn');
             if (syncBtn) syncBtn.classList.add('animate-spin');
 
-            fetch(GOOGLE_SHEETS_URL, { mode: 'no-cors', cache: 'no-store' })
-                .then(response => response.text())
-                .then(csv => {
-                    const lines = csv.trim().split('\n');
-                    if (lines.length < 2) throw new Error('CSV vacío o inválido');
-
-                    const headers = lines[0].split(',').map(h => h.trim().toUpperCase());
-                    const data = [];
-
-                    for (let i = 1; i < lines.length; i++) {
-                        const values = lines[i].split(',').map(v => v.trim());
-                        const row = {};
-                        headers.forEach((header, idx) => {
-                            row[header] = values[idx] || '';
-                        });
-                        data.push(row);
-                    }
+            fetch(GOOGLE_SHEETS_URL, { cache: 'no-store' })
+                .then(response => response.json())
+                .then(data => {
+                    if (!Array.isArray(data) || data.length === 0) throw new Error('Datos vacíos');
 
                     // Map columns and remove duplicates by SKU
                     const duplicatesRemoved = data.length;
@@ -371,9 +358,7 @@
                         data.map(row => {
                             const mapped = {};
                             for (const [excelCol, key] of Object.entries(COL_MAP)) {
-                                const found = headers.find(h => h === excelCol);
-                                const headerIdx = headers.indexOf(found);
-                                mapped[key] = headerIdx >= 0 ? row[found] || '' : '';
+                                mapped[key] = row[excelCol] || '';
                             }
                             return mapped;
                         })
