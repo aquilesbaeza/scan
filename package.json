@@ -1,23 +1,14 @@
 {
-  "name": "tops-inventory",
+  "name": "scan-inventory",
   "version": "1.0.0",
-  "description": "Captura y gestión de inventario de tops de estanterías con OCR",
-  "main": "sw.js",
+  "description": "App web responsive de inventario con escaneo de códigos - Android + iPhone Safari",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "convert": "node convert-excel-to-json.js"
   },
-  "keywords": [
-    "inventory",
-    "tops",
-    "ocr"
-  ],
+  "keywords": ["inventory", "scanner", "qrcode", "offline", "pwa"],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "@capacitor/android": "^8.5.0",
-    "@capacitor/cli": "^8.5.0",
-    "@capacitor/core": "^8.5.0",
     "xlsx": "^0.18.5"
   }
 }

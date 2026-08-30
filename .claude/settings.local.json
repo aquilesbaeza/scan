@@ -38,7 +38,9 @@
       "Bash(cd c:\\\\\\\\Users\\\\\\\\1301000146\\\\\\\\Desktop\\\\\\\\escaner)",
       "Bash(git commit -m 'feat: Inventario manual con precarga de BD Excel y responsive S23 *)",
       "Bash(rm -rf scan-main tops-inventory CAPTURATOP_STATUS.md EMPEZAR_AQUI.md INSTRUCCIONES_COMPILAR_APK.txt Escaner-Inventario.apk ResultadosAPLICACIONDETIENDASCR82.xls ResultadosAPLICACIONDETIENDASCR82.xlsx db-preload.js config.js sw.js)",
-      "Bash(node convert-excel-to-json.js)"
+      "Bash(node convert-excel-to-json.js)",
+      "Bash(rm -rf node_modules .gitignore)",
+      "Bash(echo \"node_modules/\")"
     ]
   }
 }

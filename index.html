@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, minimum-scale=1, maximum-scale=1">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Inventario">
+    <meta name="apple-mobile-web-app-title" content="Scan">
     <meta name="theme-color" content="#1f2937">
     <link rel="manifest" href="manifest.json">
-    <title>Inventario - Escáner</title>
+    <title>Scan - Inventario</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/jsQR@1.4.0/dist/jsQR.js"></script>
     <style>
@@ -33,7 +33,7 @@
     <div class="w-full h-screen flex flex-col">
         <!-- Header -->
         <div class="bg-gradient-to-r from-gray-700 to-gray-800 text-white p-3 border-b-4 border-red-500 flex-shrink-0">
-            <h1 class="text-xl font-bold">📦 Inventario</h1>
+            <h1 class="text-xl font-bold">🔍 Scan - Inventario</h1>
             <p class="text-xs text-gray-300 mt-1" id="bdStatus">Cargando BD...</p>
         </div>
 
@@ -172,24 +172,35 @@
                     database = data.productos || {};
                     const count = Object.keys(database).length;
                     const timestamp = data.metadata?.generado || new Date().toISOString();
+                    localStorage.setItem('products_cache', JSON.stringify(database));
                     localStorage.setItem('products_timestamp', timestamp);
                     localStorage.setItem('products_count', count);
-                    document.getElementById('bdStatus').textContent = `✅ BD: ${count} prod. - ${new Date(timestamp).toLocaleDateString('es-ES', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}`;
+
+                    const date = new Date(timestamp);
+                    const timeStr = date.toLocaleString('es-ES', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    document.getElementById('bdStatus').textContent = `✅ BD: ${count} prod. - ${timeStr}`;
                 })
                 .catch(() => {
-                    // Intentar cargar desde localStorage
                     const cached = localStorage.getItem('products_cache');
                     if (cached) {
                         try {
                             database = JSON.parse(cached);
                             const count = Object.keys(database).length;
                             const timestamp = localStorage.getItem('products_timestamp');
-                            document.getElementById('bdStatus').textContent = `🔄 Offline: ${count} prod. (última: ${new Date(timestamp).toLocaleDateString('es-ES', { month: '2-digit', day: '2-digit' })})`;
+                            const date = new Date(timestamp);
+                            const timeStr = date.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                            document.getElementById('bdStatus').textContent = `🔄 Offline: ${count} prod. - ${timeStr}`;
                         } catch (e) {
-                            document.getElementById('bdStatus').textContent = '⚠️ Sin base de datos';
+                            document.getElementById('bdStatus').textContent = '⚠️ Sin BD';
                         }
                     } else {
-                        document.getElementById('bdStatus').textContent = '⚠️ Sin base de datos';
+                        document.getElementById('bdStatus').textContent = '⚠️ Sin BD';
                     }
                 });
         }
