@@ -6,7 +6,10 @@ const ASSETS_TO_CACHE = [
     '/manifest.json',
     '/products.json',
     'https://cdn.tailwindcss.com',
-    'https://unpkg.com/jsQR@1.4.0/dist/jsQR.js'
+    'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js',
+    'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
+    'https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap',
+    'https://fonts.googleapis.com/icon?family=Material+Icons'
 ];
 
 // Instalar y cachear assets

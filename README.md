@@ -1,15 +1,15 @@
 # 📦 Inventario Escáner
 
-App web responsive para captura y gestión de inventario mediante cámara (QR/Códigos de barras) o entrada manual. Funciona **offline** con sincronización de BD via web.
+App web responsive para búsqueda de inventario mediante cámara (códigos de barras) o entrada manual. Funciona **offline** con datos sincronizados desde repositorio Git.
 
 ## 🚀 Características
 
-- **📷 Captura por Cámara**: Lee códigos QR y códigos de barras con jsQR
-- **✏️ Entrada Manual**: Agregar productos manualmente por SKU
-- **🔄 Sincronización**: BD cachea offline, solo sincroniza metadata de actualización
+- **📷 Captura por Cámara**: Lee códigos de barras con html5-qrcode
+- **✏️ Búsqueda Manual**: Buscar productos por UPC, SKU o descripción
+- **🔄 Sincronización**: BD se actualiza diariamente via Git
 - **📱 Responsive**: Compatible con Android (Chrome) e iPhone (Safari)
-- **💾 Offline-First**: Funciona sin conexión, sincroniza cuando hay conexión
-- **📊 Exportar**: Descarga inventario en JSON
+- **💾 Offline-First**: Funciona sin conexión después de primera carga
+- **📊 Visualizar**: Información completa del producto (precio, cantidad, categoría, etc.)
 
 ## 📋 Estructura
 
@@ -31,23 +31,28 @@ npm install
 
 ## 📚 Flujo de Datos
 
-### 1️⃣ Convertir Excel a JSON
+### 1️⃣ Convertir Excel a JSON (diariamente)
 ```bash
 node convert-excel-to-json.js
 ```
-- Lee archivos `.xlsx` con estructura: `CODIGO SKU`, `DESCRIPCION`, `UPC`, `CANTIDAD`
-- Mantiene **todos** los datos (sin eliminar nada)
-- Detecta inconsistencias (SKUs duplicados, códigos barras duplicados)
-- Genera `products.json` + `sync-info.json`
+- Lee archivos XLS/XLSX: `CODIGO SKU`, `DESCRIPCION`, `PRECIO`, `UPC`, etc.
+- Deduplica por SKU (mantiene primer registro)
+- Detecta inconsistencias (códigos duplicados, descripciones conflictivas)
+- Genera `products.json` con estructura optimizada
 
-### 2️⃣ Desplegable web
-Sube los archivos a tu servidor (GitHub Pages, Vercel, etc.)
+### 2️⃣ Sincronizar a repositorio
+```bash
+git add products.json
+git commit -m "update: Sincronización diaria de inventario"
+git push origin main
+```
 
 ### 3️⃣ Uso en dispositivos
-- Accede desde navegador (Chrome/Safari)
-- App cachea `products.json` localmente (offline)
-- Sincroniza solo `sync-info.json` (fecha/hora/cantidad)
-- Inventario se guarda en localStorage del dispositivo
+- Accede desde navegador (Chrome/Safari) en Android/iPhone
+- App descarga `products.json` automáticamente al abrir
+- Cachea datos localmente (Service Worker) para offline
+- Muestra: "Base de datos cargada - Fecha: 30/8/2026 - 05:22 p.m. - Registros: 13,209"
+- Busca por UPC, SKU o descripción instantáneamente
 
 ## 📖 Cómo usar
 

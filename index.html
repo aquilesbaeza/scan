@@ -106,10 +106,6 @@
                     <span class="text-xl font-bold text-gray-700 dark:text-gray-200 leading-none">NetSuite</span>
                 </div>
                 <div class="flex items-center space-x-4 text-gray-500 dark:text-gray-400">
-                    <button class="focus:outline-none hover:text-primary transition" onclick="syncFromGoogleSheets()"
-                        title="Sincronizar ahora" id="sync-btn">
-                        <span class="material-icons text-xl">sync</span>
-                    </button>
                     <button class="focus:outline-none" onclick="document.getElementById('excel-input').click()"
                         title="Cargar Excel">
                         <span class="material-icons text-xl">upload_file</span>
@@ -152,27 +148,14 @@
                 <h1 class="text-xl font-bold text-primary dark:text-blue-400">Búsqueda de Artículo</h1>
             </div>
 
-            <!-- Upload prompt -->
+            <!-- Loading prompt -->
             <div id="upload-prompt" class="p-6 flex flex-col items-center justify-center space-y-4 mt-8">
-                <div class="w-16 h-16 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                    <span class="material-icons text-primary text-3xl">description</span>
-                </div>
-                <p class="text-center text-gray-500 dark:text-gray-400 text-sm max-w-xs">
-                    Sincronizando catálogo de Google Sheets...<br>
-                    <small class="text-gray-400">Los datos se guardarán en el dispositivo para uso offline.</small>
-                </p>
                 <div class="flex items-center space-x-2">
                     <div class="animate-spin">
                         <span class="material-icons text-primary">refresh</span>
                     </div>
-                    <span class="text-sm text-gray-500">Cargando...</span>
+                    <span class="text-sm text-gray-500">Cargando base de datos...</span>
                 </div>
-                <button onclick="document.getElementById('excel-input').click()"
-                    class="bg-gray-400 text-white px-5 py-2 rounded font-semibold text-sm shadow flex items-center space-x-2 mt-4">
-                    <span class="material-icons text-lg">upload_file</span>
-                    <span>Cargar Excel manualmente</span>
-                </button>
-                <input type="file" id="excel-input" accept=".xlsx,.xls,.csv" onchange="handleExcelUpload(event)" />
             </div>
 
             <!-- Data loaded state -->
@@ -288,34 +271,9 @@
         let html5QrCode = null;
         let scannerRunning = false;
 
-        // Google Apps Script API (JSON format) - Sin problemas CORS
-        const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxzWxpcUiZvuVpoZb8nz6B7LDTtsm7mpHkcK7MITsvGHf1dEpiuxuQOIWPlG3f07mIb/exec';
-        const SYNC_INTERVAL = 5 * 60 * 1000; // Sincronizar cada 5 minutos
-        const DATA_LAST_SYNC = 'inventoryDataLastSync';
-
         // Load persisted data on init
         window.addEventListener('DOMContentLoaded', () => {
-            const saved = localStorage.getItem('inventoryData');
-            if (saved) {
-                try {
-                    excelData = JSON.parse(saved);
-                    if (excelData.length > 0) {
-                        document.getElementById('upload-prompt').classList.add('hidden');
-                        document.getElementById('data-loaded').classList.remove('hidden');
-                        const lastSync = localStorage.getItem(DATA_LAST_SYNC);
-                        const syncTime = lastSync ? new Date(parseInt(lastSync)).toLocaleTimeString('es-CR') : 'nunca';
-                        document.getElementById('record-count').textContent = excelData.length + ' registros (sincronizado: ' + syncTime + ')';
-                    }
-                } catch (e) {
-                    console.error('Error loading saved data', e);
-                }
-            }
-
-            // Auto-sync from Google Sheets on load
-            syncFromGoogleSheets();
-
-            // Set up periodic sync every 5 minutes
-            setInterval(syncFromGoogleSheets, SYNC_INTERVAL);
+            loadProductsFromJSON();
         });
 
         const COL_MAP = {
@@ -342,56 +300,51 @@
             { key: 'as400', label: 'Código AS400' },
         ];
 
-        // ---- SYNC FROM GOOGLE SHEETS ----
-        function syncFromGoogleSheets() {
-            const syncBtn = document.getElementById('sync-btn');
-            if (syncBtn) syncBtn.classList.add('animate-spin');
-
-            fetch(GOOGLE_SHEETS_URL, { cache: 'no-store' })
+        // ---- LOAD PRODUCTS FROM JSON ----
+        function loadProductsFromJSON() {
+            fetch('products.json')
                 .then(response => response.json())
                 .then(data => {
-                    if (!Array.isArray(data) || data.length === 0) throw new Error('Datos vacíos');
-
-                    const duplicatesRemoved = data.length;
-                    excelData = removeDuplicatesBySKU(
-                        data.map(row => {
-                            const mapped = {};
-                            for (const [excelCol, key] of Object.entries(COL_MAP)) {
-                                mapped[key] = row[excelCol] || '';
-                            }
-                            return mapped;
-                        })
-                    );
-
-                    try {
-                        localStorage.setItem('inventoryData', JSON.stringify(excelData));
-                        localStorage.setItem(DATA_LAST_SYNC, Date.now().toString());
-                        console.log('Sincronización exitosa: ' + excelData.length + ' registros únicos');
+                    if (data.productos) {
+                        // Convertir objeto a array
+                        excelData = Object.entries(data.productos).map(([sku, product]) => ({
+                            sku: sku,
+                            ...product
+                        }));
 
                         if (excelData.length > 0) {
+                            localStorage.setItem('inventoryData', JSON.stringify(excelData));
                             document.getElementById('upload-prompt').classList.add('hidden');
                             document.getElementById('data-loaded').classList.remove('hidden');
-                            const now = new Date();
-                            const syncDate = now.toLocaleDateString('es-CR');
-                            const syncTime = now.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
-                            const duplicatesCount = duplicatesRemoved - excelData.length;
-
                             document.getElementById('record-count').textContent = excelData.length + ' registros';
 
+                            // Mostrar toast con fecha/hora
+                            const now = new Date();
+                            const date = now.toLocaleDateString('es-CR');
+                            const time = now.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
+                            const duplicates = data.metadata?.total_productos - excelData.length || 0;
+
                             showToastSync('Base de datos cargada',
-                                'Fecha: ' + syncDate + ' - ' + syncTime + '\nRegistros: ' + excelData.length + ' (sin duplicados)');
+                                'Fecha: ' + date + ' - ' + time + '\nRegistros: ' + excelData.length + ' (sin duplicados)');
+                            console.log('Productos cargados: ' + excelData.length);
                         }
-                    } catch (e) {
-                        console.error('Error guardando datos', e);
-                        showToastSync('Error', 'No se pudo guardar los datos');
                     }
                 })
                 .catch(err => {
-                    console.log('Error sincronizando (offline?): ', err);
-                    showToastSync('Sin conexión', 'Usando datos guardados localmente');
-                })
-                .finally(() => {
-                    if (syncBtn) syncBtn.classList.remove('animate-spin');
+                    console.log('Error cargando JSON:', err);
+                    const saved = localStorage.getItem('inventoryData');
+                    if (saved) {
+                        try {
+                            excelData = JSON.parse(saved);
+                            if (excelData.length > 0) {
+                                document.getElementById('upload-prompt').classList.add('hidden');
+                                document.getElementById('data-loaded').classList.remove('hidden');
+                                document.getElementById('record-count').textContent = excelData.length + ' registros';
+                            }
+                        } catch (e) {
+                            console.error('Error cargando datos guardados', e);
+                        }
+                    }
                 });
         }
 
@@ -436,7 +389,6 @@
 
                     try {
                         localStorage.setItem('inventoryData', JSON.stringify(excelData));
-                        localStorage.setItem(DATA_LAST_SYNC, Date.now().toString());
                         showToast('Datos guardados - ' + excelData.length + ' registros únicos');
                     } catch (e) {
                         showToast('Catálogo muy grande para guardar offline');
