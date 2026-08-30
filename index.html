@@ -290,14 +290,12 @@
         };
 
         const DISPLAY_FIELDS = [
-            { key: 'upc', label: 'Código UPC' },
             { key: 'sku', label: 'Código NetSuite' },
             { key: 'descripcion', label: 'Descripción' },
-            { key: 'existencia', label: 'Cantidad en Existencia' },
-            { key: 'precioFinal', label: 'Precio Final', isCurrency: true },
-            { key: 'estatus', label: 'Estatus', isSelect: true },
-            { key: 'tipo', label: 'Tipo', isSelect: true },
-            { key: 'as400', label: 'Código AS400' },
+            { key: 'precio', label: 'Precio Final', isCurrency: true },
+            { key: 'categoria', label: 'Categoría' },
+            { key: 'codigos_barras', label: 'Códigos de Barras (UPCs)', isArray: true },
+            { key: 'cantidades', label: 'Cantidades en BD', isArray: true },
         ];
 
         // ---- LOAD PRODUCTS FROM JSON ----
@@ -463,10 +461,20 @@
             const qNorm = query.replace(/^0+/, '');
 
             const results = excelData.filter(item => {
-                const upcNorm = (item.upc || '').replace(/^0+/, '');
-                if (upcNorm === qNorm || item.upc === query) return true;
+                // Buscar en SKU
                 if (item.sku === query) return true;
+
+                // Buscar en todos los códigos de barras
+                if (Array.isArray(item.codigos_barras)) {
+                    for (const upc of item.codigos_barras) {
+                        const upcNorm = (upc || '').replace(/^0+/, '');
+                        if (upcNorm === qNorm || upc === query) return true;
+                    }
+                }
+
+                // Buscar en descripción
                 if ((item.descripcion || '').toUpperCase().includes(q)) return true;
+
                 return false;
             });
 
@@ -503,9 +511,11 @@
             results.forEach((item) => {
                 const row = document.createElement('button');
                 row.className = 'w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition flex flex-col border-b last:border-0 border-gray-100 dark:border-gray-700';
+                const upcs = Array.isArray(item.codigos_barras) ? item.codigos_barras.join(', ') : '—';
                 row.innerHTML =
                     '<span class="text-sm font-semibold text-gray-700 dark:text-gray-200 truncate">' + (item.descripcion || '—') + '</span>' +
-                    '<span class="text-xs text-gray-500 dark:text-gray-400">SKU: ' + (item.sku || '-') + ' &nbsp;|&nbsp; UPC: ' + (item.upc || '-') + '</span>';
+                    '<span class="text-xs text-gray-500 dark:text-gray-400">SKU: ' + (item.sku || '-') + '</span>' +
+                    '<span class="text-xs text-gray-400 dark:text-gray-500">UPCs: ' + upcs + '</span>';
                 row.onclick = () => showSingleResult(item);
                 list.appendChild(row);
             });
@@ -520,7 +530,6 @@
             contentContainer.innerHTML = '';
 
             DISPLAY_FIELDS.forEach((field) => {
-                let value = item[field.key] || '—';
                 const div = document.createElement('div');
                 div.className = 'space-y-1';
 
@@ -529,34 +538,38 @@
                 label.textContent = field.label;
                 div.appendChild(label);
 
-                if (field.isSelect) {
-                    const wrapper = document.createElement('div');
-                    wrapper.className = 'relative w-full';
-                    const inner = document.createElement('div');
-                    inner.className = 'w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-2 text-sm text-gray-700 dark:text-gray-300 flex justify-between items-center';
-                    inner.innerHTML = `<span>${value}</span><span class="material-icons text-gray-400 text-sm">arrow_drop_down</span>`;
-                    wrapper.appendChild(inner);
-                    div.appendChild(wrapper);
-                } else {
-                    const valDiv = document.createElement('div');
-                    valDiv.className = 'w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300';
-                    if (field.isCurrency) {
-                        const num = parseFloat(value);
-                        valDiv.textContent = !isNaN(num)
-                            ? '₡ ' + num.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                            : value;
-                    } else if (field.key === 'existencia') {
-                        valDiv.className = 'w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300 font-semibold';
-                        valDiv.textContent = value;
+                const valDiv = document.createElement('div');
+                valDiv.className = 'w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300';
+
+                if (field.isArray) {
+                    const arr = item[field.key] || [];
+                    if (Array.isArray(arr) && arr.length > 0) {
+                        if (field.key === 'cantidades') {
+                            valDiv.innerHTML = arr.map(c => {
+                                if (typeof c === 'object' && c.cantidad) {
+                                    return `${c.cantidad}`;
+                                }
+                                return c;
+                            }).join(', ') + '<span class="text-xs text-gray-400 ml-2">(de BD)</span>';
+                        } else {
+                            valDiv.textContent = arr.join(', ');
+                        }
                     } else {
-                        valDiv.textContent = value;
+                        valDiv.textContent = '—';
                     }
-                    div.appendChild(valDiv);
+                } else if (field.isCurrency) {
+                    const num = parseFloat(item[field.key]);
+                    valDiv.textContent = !isNaN(num)
+                        ? '₡ ' + num.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        : '—';
+                } else {
+                    valDiv.textContent = item[field.key] || '—';
                 }
 
+                div.appendChild(valDiv);
                 contentContainer.appendChild(div);
 
-                if (field.key === 'precioFinal') {
+                if (field.key === 'precio') {
                     const hr = document.createElement('hr');
                     hr.className = 'border-gray-200 dark:border-gray-700 my-2';
                     contentContainer.appendChild(hr);
