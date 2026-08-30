@@ -343,7 +343,6 @@
             { key: 'existencia', label: 'Existencia' },
             { key: 'tipo', label: 'Tipo' },
             { key: 'estatus', label: 'Estatus' },
-            { key: 'cantidades', label: 'Cantidades en BD', isArray: true },
         ];
 
         // ---- LOAD PRODUCTS FROM JSON ----
@@ -597,20 +596,20 @@
                 if (field.key === 'upc') {
                     // Mostrar solo el UPC que coincidió en la búsqueda
                     valDiv.textContent = matchedUpc || item.upc || '—';
-                } else if (field.key === 'cantidades') {
-                    const arr = item[field.key] || [];
-                    if (Array.isArray(arr) && arr.length > 0) {
-                        const cantidades = arr.map(c => {
-                            return typeof c === 'object' && c.cantidad ? c.cantidad : c;
-                        });
+                } else if (field.key === 'existencia') {
+                    // Chequear si hay múltiples cantidades en BD
+                    const cantidades = (item.cantidades || []).map(c => {
+                        return typeof c === 'object' && c.cantidad ? c.cantidad : c;
+                    });
 
-                        // Si hay múltiples cantidades diferentes, resaltar con color
-                        if (cantidades.length > 1) {
-                            valDiv.className = 'w-full bg-yellow-100 dark:bg-yellow-900 border-2 border-yellow-400 dark:border-yellow-600 rounded px-2 py-1.5 text-sm font-semibold text-yellow-800 dark:text-yellow-100';
-                            valDiv.innerHTML = cantidades.join(' | ') + '<span class="text-xs ml-2 font-normal">(⚠️ múltiples en BD)</span>';
-                        } else {
-                            valDiv.textContent = cantidades[0];
-                        }
+                    if (cantidades.length > 1) {
+                        // Múltiples cantidades: mostrar con color de contraste
+                        valDiv.className = 'w-full bg-yellow-100 dark:bg-yellow-900 border-2 border-yellow-400 dark:border-yellow-600 rounded px-2 py-1.5 text-sm font-semibold text-yellow-800 dark:text-yellow-100';
+                        valDiv.innerHTML = cantidades.join(' | ') + '<span class="text-xs ml-2 font-normal">(⚠️ múltiples en BD)</span>';
+                    } else if (item.existencia) {
+                        valDiv.textContent = item.existencia;
+                    } else if (cantidades.length === 1) {
+                        valDiv.textContent = cantidades[0];
                     } else {
                         valDiv.textContent = '—';
                     }
