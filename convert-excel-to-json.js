@@ -10,11 +10,17 @@ const EXCEL_FILES = [
 ];
 const COLUMN_MAPPINGS = {
     sku: ['CODIGO SKU', 'SKU', 'CÓDIGO SKU', 'codigo'],
+    idInterno: ['ID INTERNO', 'ID', 'INTERNO'],
     descripcion: ['DESCRIPCION', 'DESCRIPCION PRODUCTO', 'PRODUCTO', 'NOMBRE'],
     precio: ['PRECIO FINAL', 'PRECIO', 'VALOR'],
-    categoria: ['CATEGORIA', 'TIPO', 'CATEGORIA PRODUCTO'],
-    upc: ['UPC', 'CODIGO BARRAS', 'BARRAS', 'CODIGO_BARRAS'],
-    cantidad: ['CANTIDAD', 'CANT', 'STOCK', 'STOCK_ACTUAL'],
+    categoria: ['CATEGORIA', 'CATEGORIA PRODUCTO'],
+    tipo: ['TIPO', 'TIPO PRODUCTO'],
+    estatus: ['ESTATUS', 'STATUS', 'ESTADO'],
+    existencia: ['EXISTENCIA', 'STOCK', 'STOCK_ACTUAL', 'CANTIDAD'],
+    upc: ['UPC', 'CODIGO BARRAS', 'BARRAS', 'CODIGO_BARRAS', 'CODIGO UPC'],
+    cantidad: ['CANTIDAD', 'CANT', 'STOCK'],
+    as400: ['AS 400', 'AS400', 'CODIGO AS400'],
+    numParte: ['NUMERO DE PARTE', 'NUM PARTE', 'PARTE'],
 };
 
 function findColumn(row, columnAliases) {
@@ -51,8 +57,14 @@ function convertExcelToJson(excelPath) {
             const desc = findColumn(row, COLUMN_MAPPINGS.descripcion);
             const precio = findColumn(row, COLUMN_MAPPINGS.precio);
             const categoria = findColumn(row, COLUMN_MAPPINGS.categoria);
+            const tipo = findColumn(row, COLUMN_MAPPINGS.tipo);
+            const estatus = findColumn(row, COLUMN_MAPPINGS.estatus);
+            const existencia = findColumn(row, COLUMN_MAPPINGS.existencia);
             const upc = findColumn(row, COLUMN_MAPPINGS.upc);
             const cantidad = findColumn(row, COLUMN_MAPPINGS.cantidad);
+            const as400 = findColumn(row, COLUMN_MAPPINGS.as400);
+            const numParte = findColumn(row, COLUMN_MAPPINGS.numParte);
+            const idInterno = findColumn(row, COLUMN_MAPPINGS.idInterno);
 
             if (!sku || !desc) return;
 
@@ -61,9 +73,15 @@ function convertExcelToJson(excelPath) {
             if (!products[skuStr]) {
                 products[skuStr] = {
                     sku: skuStr,
+                    idInterno: idInterno ? idInterno.toString().trim() : '',
                     descripcion: desc.toString().trim(),
                     precio: precio ? parseFloat(precio) : 0,
                     categoria: categoria ? categoria.toString().trim() : '',
+                    tipo: tipo ? tipo.toString().trim() : '',
+                    estatus: estatus ? estatus.toString().trim() : '',
+                    existencia: existencia ? existencia.toString().trim() : '',
+                    as400: as400 ? as400.toString().trim() : '',
+                    numParte: numParte ? numParte.toString().trim() : '',
                     codigos_barras: [],
                     cantidades: []
                 };
