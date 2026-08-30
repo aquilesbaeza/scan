@@ -270,6 +270,7 @@
         let excelData = [];
         let html5QrCode = null;
         let scannerRunning = false;
+        let scannedUpc = null;
 
         // Load persisted data on init
         window.addEventListener('DOMContentLoaded', () => {
@@ -292,9 +293,9 @@
         const DISPLAY_FIELDS = [
             { key: 'sku', label: 'Código NetSuite' },
             { key: 'descripcion', label: 'Descripción' },
+            { key: 'upc', label: 'Código de Barras (UPC)' },
             { key: 'precio', label: 'Precio Final', isCurrency: true },
             { key: 'categoria', label: 'Categoría' },
-            { key: 'codigos_barras', label: 'Códigos de Barras (UPCs)', isArray: true },
             { key: 'cantidades', label: 'Cantidades en BD', isArray: true },
         ];
 
@@ -431,6 +432,7 @@
                 (decodedText) => {
                     stopScanner();
                     document.getElementById('search-input').value = decodedText;
+                    scannedUpc = decodedText;
                     executeSearch();
                 },
                 (errorMessage) => {
@@ -459,16 +461,20 @@
 
             const q = query.toUpperCase();
             const qNorm = query.replace(/^0+/, '');
+            let matchedUpc = scannedUpc || null;
 
             const results = excelData.filter(item => {
                 // Buscar en SKU
                 if (item.sku === query) return true;
 
-                // Buscar en todos los códigos de barras
+                // Buscar en todos los códigos de barras y guardar el que coincidió
                 if (Array.isArray(item.codigos_barras)) {
                     for (const upc of item.codigos_barras) {
                         const upcNorm = (upc || '').replace(/^0+/, '');
-                        if (upcNorm === qNorm || upc === query) return true;
+                        if (upcNorm === qNorm || upc === query) {
+                            if (!matchedUpc) matchedUpc = upc;
+                            return true;
+                        }
                     }
                 }
 
@@ -478,11 +484,13 @@
                 return false;
             });
 
+            scannedUpc = null; // Limpiar después de usar
+
             if (results.length === 0) {
                 showToast('No se encontraron resultados');
                 showNoResult();
             } else if (results.length === 1) {
-                showSingleResult(results[0]);
+                showSingleResult(results[0], matchedUpc);
             } else {
                 showMultipleResults(results);
             }
@@ -511,17 +519,15 @@
             results.forEach((item) => {
                 const row = document.createElement('button');
                 row.className = 'w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition flex flex-col border-b last:border-0 border-gray-100 dark:border-gray-700';
-                const upcs = Array.isArray(item.codigos_barras) ? item.codigos_barras.join(', ') : '—';
                 row.innerHTML =
                     '<span class="text-sm font-semibold text-gray-700 dark:text-gray-200 truncate">' + (item.descripcion || '—') + '</span>' +
-                    '<span class="text-xs text-gray-500 dark:text-gray-400">SKU: ' + (item.sku || '-') + '</span>' +
-                    '<span class="text-xs text-gray-400 dark:text-gray-500">UPCs: ' + upcs + '</span>';
-                row.onclick = () => showSingleResult(item);
+                    '<span class="text-xs text-gray-500 dark:text-gray-400">SKU: ' + (item.sku || '-') + '</span>';
+                row.onclick = () => showSingleResult(item, null);
                 list.appendChild(row);
             });
         }
 
-        function showSingleResult(item) {
+        function showSingleResult(item, matchedUpc) {
             document.getElementById('no-result').classList.add('hidden');
             document.getElementById('multi-results').classList.add('hidden');
             const container = document.getElementById('result-fields');
@@ -538,21 +544,25 @@
                 label.textContent = field.label;
                 div.appendChild(label);
 
-                const valDiv = document.createElement('div');
+                let valDiv = document.createElement('div');
                 valDiv.className = 'w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300';
 
-                if (field.isArray) {
+                if (field.key === 'upc') {
+                    // Mostrar solo el UPC que coincidió en la búsqueda
+                    valDiv.textContent = matchedUpc || item.upc || '—';
+                } else if (field.key === 'cantidades') {
                     const arr = item[field.key] || [];
                     if (Array.isArray(arr) && arr.length > 0) {
-                        if (field.key === 'cantidades') {
-                            valDiv.innerHTML = arr.map(c => {
-                                if (typeof c === 'object' && c.cantidad) {
-                                    return `${c.cantidad}`;
-                                }
-                                return c;
-                            }).join(', ') + '<span class="text-xs text-gray-400 ml-2">(de BD)</span>';
+                        const cantidades = arr.map(c => {
+                            return typeof c === 'object' && c.cantidad ? c.cantidad : c;
+                        });
+
+                        // Si hay múltiples cantidades diferentes, resaltar con color
+                        if (cantidades.length > 1) {
+                            valDiv.className = 'w-full bg-yellow-100 dark:bg-yellow-900 border-2 border-yellow-400 dark:border-yellow-600 rounded px-2 py-1.5 text-sm font-semibold text-yellow-800 dark:text-yellow-100';
+                            valDiv.innerHTML = cantidades.join(' | ') + '<span class="text-xs ml-2 font-normal">(⚠️ múltiples en BD)</span>';
                         } else {
-                            valDiv.textContent = arr.join(', ');
+                            valDiv.textContent = cantidades[0];
                         }
                     } else {
                         valDiv.textContent = '—';
