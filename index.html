@@ -106,8 +106,8 @@
                     <span class="text-xl font-bold text-gray-700 dark:text-gray-200 leading-none">NetSuite</span>
                 </div>
                 <div class="flex items-center space-x-4 text-gray-500 dark:text-gray-400">
-                    <button class="focus:outline-none" onclick="document.getElementById('excel-input').click()"
-                        title="Cargar Excel">
+                    <button class="focus:outline-none" onclick="document.getElementById('excel-modal').classList.remove('hidden')"
+                        title="Convertir Excel manualmente">
                         <span class="material-icons text-xl">upload_file</span>
                     </button>
                     <button class="focus:outline-none">
@@ -231,6 +231,51 @@
 
         </div>
     </main>
+
+    <!-- EXCEL CONVERSION MODAL -->
+    <div id="excel-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full max-h-96 overflow-y-auto shadow-lg">
+            <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center sticky top-0 bg-white dark:bg-gray-800">
+                <h3 class="font-bold text-gray-800 dark:text-white">Convertir Excel a JSON</h3>
+                <button onclick="closeExcelModal()" class="text-gray-500 hover:text-gray-700">
+                    <span class="material-icons">close</span>
+                </button>
+            </div>
+
+            <div class="p-4 space-y-3">
+                <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700" onclick="document.getElementById('manual-excel-input').click()">
+                    <span class="material-icons text-4xl text-gray-400 mx-auto block">upload_file</span>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">Click o arrastra XLS aquí</p>
+                </div>
+
+                <input type="file" id="manual-excel-input" accept=".xls,.xlsx" class="hidden" onchange="handleManualExcelUpload(event)">
+
+                <div id="conversion-progress" class="hidden space-y-2">
+                    <div class="flex items-center space-x-2">
+                        <div class="animate-spin">
+                            <span class="material-icons text-blue-500">refresh</span>
+                        </div>
+                        <span class="text-sm">Convirtiendo Excel...</span>
+                    </div>
+                </div>
+
+                <div id="conversion-result" class="hidden space-y-3">
+                    <div class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100 p-3 rounded text-sm">
+                        <p class="font-semibold">✅ Conversión exitosa</p>
+                        <p id="result-count" class="text-xs mt-1"></p>
+                    </div>
+
+                    <button onclick="useConvertedData()" class="w-full bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded font-semibold text-sm transition">
+                        Usar esta BD ahora
+                    </button>
+
+                    <button onclick="downloadConvertedJson()" class="w-full bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 text-gray-800 dark:text-white px-3 py-2 rounded font-semibold text-sm transition">
+                        Descargar JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- SCANNER MODAL -->
     <div id="scanner-modal">
@@ -610,6 +655,145 @@
             document.getElementById('toast-msg').textContent = details;
             toast.classList.remove('hidden');
             setTimeout(() => toast.classList.add('hidden'), 5000);
+        }
+
+        // ---- MANUAL EXCEL CONVERSION ----
+        let convertedData = null;
+
+        function closeExcelModal() {
+            document.getElementById('excel-modal').classList.add('hidden');
+            document.getElementById('conversion-result').classList.add('hidden');
+            document.getElementById('conversion-progress').classList.add('hidden');
+            document.getElementById('manual-excel-input').value = '';
+        }
+
+        function handleManualExcelUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            document.getElementById('conversion-progress').classList.remove('hidden');
+            document.getElementById('conversion-result').classList.add('hidden');
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const wb = XLSX.read(data, { type: 'array' });
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+                    const COLUMN_MAPPINGS = {
+                        sku: ['CODIGO SKU', 'SKU', 'CÓDIGO SKU', 'codigo'],
+                        descripcion: ['DESCRIPCION', 'DESCRIPCION PRODUCTO', 'PRODUCTO', 'NOMBRE'],
+                        precio: ['PRECIO FINAL', 'PRECIO', 'VALOR'],
+                        categoria: ['CATEGORIA', 'TIPO', 'CATEGORIA PRODUCTO'],
+                        upc: ['UPC', 'CODIGO BARRAS', 'BARRAS', 'CODIGO_BARRAS'],
+                        cantidad: ['CANTIDAD', 'CANT', 'STOCK', 'STOCK_ACTUAL'],
+                    };
+
+                    function findColumn(row, aliases) {
+                        for (const alias of aliases) {
+                            for (const key of Object.keys(row)) {
+                                if (key.toUpperCase().includes(alias.toUpperCase())) {
+                                    return row[key];
+                                }
+                            }
+                        }
+                        return undefined;
+                    }
+
+                    const products = {};
+                    rows.forEach((row) => {
+                        const sku = findColumn(row, COLUMN_MAPPINGS.sku);
+                        const desc = findColumn(row, COLUMN_MAPPINGS.descripcion);
+                        const precio = findColumn(row, COLUMN_MAPPINGS.precio);
+                        const categoria = findColumn(row, COLUMN_MAPPINGS.categoria);
+                        const upc = findColumn(row, COLUMN_MAPPINGS.upc);
+                        const cantidad = findColumn(row, COLUMN_MAPPINGS.cantidad);
+
+                        if (!sku || !desc) return;
+
+                        const skuStr = sku.toString().trim();
+                        if (!products[skuStr]) {
+                            products[skuStr] = {
+                                sku: skuStr,
+                                descripcion: desc.toString().trim(),
+                                precio: precio ? parseFloat(precio) : 0,
+                                categoria: categoria ? categoria.toString().trim() : '',
+                                codigos_barras: [],
+                                cantidades: []
+                            };
+                        }
+
+                        if (upc) {
+                            const upcStr = upc.toString().trim();
+                            if (!products[skuStr].codigos_barras.includes(upcStr)) {
+                                products[skuStr].codigos_barras.push(upcStr);
+                            }
+                        }
+
+                        if (cantidad) {
+                            const cantNum = parseInt(cantidad);
+                            if (!isNaN(cantNum) && cantNum > 0) {
+                                products[skuStr].cantidades.push(cantNum);
+                            }
+                        }
+                    });
+
+                    convertedData = {
+                        metadata: {
+                            generado: new Date().toISOString(),
+                            total_productos: Object.keys(products).length,
+                            total_codigos_barras: Object.values(products).reduce((sum, p) => sum + p.codigos_barras.length, 0),
+                            versión: '1.0'
+                        },
+                        productos: products
+                    };
+
+                    document.getElementById('conversion-progress').classList.add('hidden');
+                    document.getElementById('conversion-result').classList.remove('hidden');
+                    document.getElementById('result-count').textContent =
+                        `${Object.keys(products).length} productos convertidos`;
+
+                } catch (err) {
+                    console.error('Error:', err);
+                    showToast('Error al convertir Excel');
+                    closeExcelModal();
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function useConvertedData() {
+            if (!convertedData) return;
+            excelData = Object.entries(convertedData.productos).map(([sku, product]) => ({
+                sku: sku,
+                ...product
+            }));
+
+            localStorage.setItem('inventoryData', JSON.stringify(excelData));
+            document.getElementById('upload-prompt').classList.add('hidden');
+            document.getElementById('data-loaded').classList.remove('hidden');
+            document.getElementById('record-count').textContent = excelData.length + ' registros';
+
+            const now = new Date();
+            const date = now.toLocaleDateString('es-CR');
+            const time = now.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
+            showToastSync('Base de datos cargada', 'Fecha: ' + date + ' - ' + time + '\nRegistros: ' + excelData.length + ' (sin duplicados)');
+
+            closeExcelModal();
+        }
+
+        function downloadConvertedJson() {
+            if (!convertedData) return;
+            const jsonStr = JSON.stringify(convertedData, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'products-' + new Date().toISOString().split('T')[0] + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
         }
     </script>
 
