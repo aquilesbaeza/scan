@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Escáner Inventario</string>
-    <string name="title_activity_main">Escáner Inventario</string>
-    <string name="package_name">com.officedepot.scanner</string>
-    <string name="custom_url_scheme">com.officedepot.scanner</string>
-</resources>
