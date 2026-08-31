@@ -18,7 +18,7 @@ const COLUMN_MAPPINGS = {
     estatus: ['ESTATUS', 'STATUS', 'ESTADO'],
     existencia: ['EXISTENCIA', 'STOCK', 'STOCK_ACTUAL', 'CANTIDAD'],
     upc: ['UPC', 'CODIGO BARRAS', 'BARRAS', 'CODIGO_BARRAS', 'CODIGO UPC'],
-    cantidad: ['CANTIDAD', 'CANT', 'STOCK'],
+    cantidad: ['CANTIDAD', 'CANT', 'STOCK', 'EXISTENCIA'],
     as400: ['AS 400', 'AS400', 'CODIGO AS400'],
     numParte: ['NUMERO DE PARTE', 'NUM PARTE', 'PARTE'],
 };
