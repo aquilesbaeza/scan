@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `escaner-${CACHE_VERSION}`;
 const ASSETS_TO_CACHE = [
     '/',
