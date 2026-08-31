@@ -470,21 +470,12 @@
             }
 
             html5QrCode = new Html5Qrcode("reader");
-
-            // Configuración mejorada para S25 Fe y otros dispositivos
-            const constraints = {
-                facingMode: "environment",
-                zoom: { min: 1, ideal: 1, max: 1 },  // Sin zoom, ángulo ancho
-                focusMode: "continuous"
-            };
-
             html5QrCode.start(
-                constraints,
+                { facingMode: "environment" },
                 {
                     fps: 20,
                     qrbox: { width: 280, height: 150 },
                     aspectRatio: 1.0,
-                    disableFlip: false,
                     formatsToSupport: [
                         Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
                         Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
