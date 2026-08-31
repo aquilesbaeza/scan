@@ -605,7 +605,7 @@
                     if (cantidades.length > 1) {
                         // Múltiples cantidades: mostrar con color de contraste
                         valDiv.className = 'w-full bg-yellow-100 dark:bg-yellow-900 border-2 border-yellow-400 dark:border-yellow-600 rounded px-2 py-1.5 text-sm font-semibold text-yellow-800 dark:text-yellow-100';
-                        valDiv.innerHTML = cantidades.join(' | ') + '<span class="text-xs ml-2 font-normal">(⚠️ múltiples en BD)</span>';
+                        valDiv.textContent = cantidades.join(' | ');
                     } else if (item.existencia) {
                         valDiv.textContent = item.existencia;
                     } else if (cantidades.length === 1) {
