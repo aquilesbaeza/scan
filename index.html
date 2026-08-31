@@ -361,16 +361,15 @@
                             localStorage.setItem('inventoryData', JSON.stringify(excelData));
                             document.getElementById('upload-prompt').classList.add('hidden');
                             document.getElementById('data-loaded').classList.remove('hidden');
-                            document.getElementById('record-count').textContent = excelData.length + ' registros';
 
-                            // Mostrar toast con fecha/hora
+                            // Mostrar fecha y hora en el contador
                             const now = new Date();
                             const date = now.toLocaleDateString('es-CR');
                             const time = now.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
-                            const duplicates = data.metadata?.total_productos - excelData.length || 0;
+                            document.getElementById('record-count').textContent = excelData.length + ' registros • ' + date + ' - ' + time;
 
                             showToastSync('Base de datos cargada',
-                                'Fecha: ' + date + ' - ' + time + '\nRegistros: ' + excelData.length + ' (sin duplicados)');
+                                'Fecha: ' + date + ' - ' + time + '\nRegistros: ' + excelData.length);
                             console.log('Productos cargados: ' + excelData.length);
                         }
                     }
@@ -597,22 +596,8 @@
                     // Mostrar solo el UPC que coincidió en la búsqueda
                     valDiv.textContent = matchedUpc || item.upc || '—';
                 } else if (field.key === 'existencia') {
-                    // Chequear si hay múltiples cantidades en BD
-                    const cantidades = (item.cantidades || []).map(c => {
-                        return typeof c === 'object' && c.cantidad ? c.cantidad : c;
-                    });
-
-                    if (cantidades.length > 1) {
-                        // Múltiples cantidades: mostrar con color de contraste
-                        valDiv.className = 'w-full bg-yellow-100 dark:bg-yellow-900 border-2 border-yellow-400 dark:border-yellow-600 rounded px-2 py-1.5 text-sm font-semibold text-yellow-800 dark:text-yellow-100';
-                        valDiv.textContent = cantidades.join(' | ');
-                    } else if (item.existencia) {
-                        valDiv.textContent = item.existencia;
-                    } else if (cantidades.length === 1) {
-                        valDiv.textContent = cantidades[0];
-                    } else {
-                        valDiv.textContent = '—';
-                    }
+                    // Mostrar existencia del producto
+                    valDiv.textContent = item.existencia || '—';
                 } else if (field.isCurrency) {
                     const num = parseFloat(item[field.key]);
                     valDiv.textContent = !isNaN(num)
