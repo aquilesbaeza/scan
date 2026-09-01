@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" />
+    <meta content="#3b6e9c" name="theme-color" />
+    <title>Escáner de Inventario</title>
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#3b6e9c",
+                        secondary: "#607799",
+                        "background-light": "#f0f2f5",
+                        "background-dark": "#1a202c",
+                        "surface-light": "#ffffff",
+                        "surface-dark": "#2d3748",
+                        "input-bg-light": "#e8f0fe",
+                        "input-bg-dark": "#4a5568",
+                        "border-light": "#d1d5db",
+                        "border-dark": "#4b5563",
+                    },
+                    fontFamily: {
+                        display: ["Open Sans", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "4px",
+                    },
+                },
+            },
+        };
+    </script>
+    <style>
+        body {
+            font-family: 'Open Sans', sans-serif;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Scanner modal */
+        #scanner-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.92);
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #scanner-modal.active {
+            display: flex;
+        }
+
+        #reader {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #excel-input {
+            display: none;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+    </style>
+</head>
+
+<body class="bg-background-light dark:bg-background-dark text-gray-800 dark:text-gray-100 min-h-screen flex flex-col">
+
+    <!-- HEADER -->
+    <header
+        class="bg-surface-light dark:bg-surface-dark border-b border-gray-300 dark:border-gray-700 shadow-sm z-10 w-full">
+        <div class="max-w-2xl mx-auto w-full">
+            <div class="px-4 py-2 flex items-center justify-between">
+                <div class="flex flex-col">
+                    <span
+                        class="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Oracle</span>
+                    <span class="text-xl font-bold text-gray-700 dark:text-gray-200 leading-none">NetSuite</span>
+                </div>
+                <div class="flex items-center space-x-4 text-gray-500 dark:text-gray-400">
+                    <button class="focus:outline-none hover:text-primary transition" onclick="syncFromGoogleSheets()"
+                        title="Sincronizar ahora" id="sync-btn">
+                        <span class="material-icons text-xl">sync</span>
+                    </button>
+                    <button class="focus:outline-none" onclick="document.getElementById('excel-input').click()"
+                        title="Cargar Excel">
+                        <span class="material-icons text-xl">upload_file</span>
+                    </button>
+                    <button class="focus:outline-none">
+                        <span class="material-icons text-xl">help_outline</span>
+                    </button>
+                    <div class="flex flex-col items-end text-xs leading-tight">
+                        <div class="flex items-center">
+                            <span class="material-icons text-base mr-1">business</span>
+                            <span class="font-semibold">621</span>
+                        </div>
+                        <span>San Pedro</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-primary text-white shadow-inner w-full">
+            <div class="max-w-2xl mx-auto w-full flex items-center px-2 py-2">
+                <div class="flex space-x-6 px-4">
+                    <button class="opacity-80 hover:opacity-100"><span class="material-icons">history</span></button>
+                    <button class="opacity-80 hover:opacity-100"><span class="material-icons">star</span></button>
+                    <button class="opacity-100"><span class="material-icons">home</span></button>
+                </div>
+                <div class="ml-4 font-semibold text-sm tracking-wide">Artículos</div>
+                <div class="flex-grow flex justify-end px-2">
+                    <span class="material-icons">more_horiz</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN -->
+    <main class="flex-grow overflow-y-auto no-scrollbar w-full">
+        <div class="max-w-2xl mx-auto w-full">
+
+            <!-- Title -->
+            <div
+                class="px-4 py-4 border-b border-gray-200 dark:border-gray-700 bg-surface-light dark:bg-surface-dark sticky top-0 z-0">
+                <h1 class="text-xl font-bold text-primary dark:text-blue-400">Búsqueda de Artículo</h1>
+            </div>
+
+            <!-- Upload prompt -->
+            <div id="upload-prompt" class="p-6 flex flex-col items-center justify-center space-y-4 mt-8">
+                <div class="w-16 h-16 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                    <span class="material-icons text-primary text-3xl">description</span>
+                </div>
+                <p class="text-center text-gray-500 dark:text-gray-400 text-sm max-w-xs">
+                    Sincronizando catálogo de Google Sheets...<br>
+                    <small class="text-gray-400">Los datos se guardarán en el dispositivo para uso offline.</small>
+                </p>
+                <div class="flex items-center space-x-2">
+                    <div class="animate-spin">
+                        <span class="material-icons text-primary">refresh</span>
+                    </div>
+                    <span class="text-sm text-gray-500">Cargando...</span>
+                </div>
+                <button onclick="document.getElementById('excel-input').click()"
+                    class="bg-gray-400 text-white px-5 py-2 rounded font-semibold text-sm shadow flex items-center space-x-2 mt-4">
+                    <span class="material-icons text-lg">upload_file</span>
+                    <span>Cargar Excel manualmente</span>
+                </button>
+                <input type="file" id="excel-input" accept=".xlsx,.xls,.csv" onchange="handleExcelUpload(event)" />
+            </div>
+
+            <!-- Data loaded state -->
+            <div id="data-loaded" class="hidden">
+
+                <!-- Record count -->
+                <div
+                    class="px-4 py-1.5 bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-600 flex items-center justify-between">
+                    <div class="flex items-center space-x-2 text-gray-500 dark:text-gray-400 text-xs font-semibold">
+                        <span class="material-icons text-sm">check_circle</span>
+                        <span id="record-count">0 registros</span>
+                    </div>
+                    <button onclick="document.getElementById('excel-input').click()"
+                        class="text-xs text-primary font-semibold">Cambiar</button>
+                </div>
+
+                <!-- Search bar -->
+                <div
+                    class="px-4 py-3 bg-surface-light dark:bg-surface-dark border-b border-gray-200 dark:border-gray-700 sticky top-14 z-10 w-full shadow-sm">
+                    <div
+                        class="flex items-center bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded overflow-hidden">
+                        <button onclick="executeSearch()" title="Buscar"
+                            class="px-3 py-2 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-primary transition">
+                            <span class="material-icons text-xl">search</span>
+                        </button>
+                        <input id="search-input" type="text" placeholder="UPC, Código NetSuite o Descripción..."
+                            class="flex-1 bg-transparent border-none px-1 py-2 text-sm text-gray-800 dark:text-gray-100 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500 min-w-0" />
+                        <button onclick="startScanner()" title="Escanear código de barras"
+                            class="px-3 py-2 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-primary transition border-l border-gray-300 dark:border-gray-600 bg-gray-200 dark:bg-gray-800">
+                            <span class="material-icons text-xl">photo_camera</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Results section header -->
+                <div
+                    class="bg-gray-200 dark:bg-gray-800 px-4 py-2 flex items-center border-b border-gray-300 dark:border-gray-600">
+                    <span
+                        class="material-icons text-gray-600 dark:text-gray-300 text-sm mr-2">keyboard_arrow_down</span>
+                    <h2 class="text-sm font-bold text-gray-700 dark:text-gray-300">Información de Artículo</h2>
+                </div>
+
+                <!-- No result -->
+                <div id="no-result"
+                    class="p-8 text-center text-gray-400 dark:text-gray-500 text-sm bg-surface-light dark:bg-surface-dark">
+                    <span
+                        class="material-icons text-4xl mb-2 block text-gray-300 dark:text-gray-600">qr_code_scanner</span>
+                    Realice una búsqueda para ver la información del artículo.
+                </div>
+
+                <!-- Multiple results -->
+                <div id="multi-results" class="hidden bg-surface-light dark:bg-surface-dark">
+                    <div
+                        class="px-4 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                        <span class="text-xs text-gray-500 dark:text-gray-400 font-semibold" id="results-count"></span>
+                        <span class="text-xs text-gray-400 dark:text-gray-500">Seleccione un artículo</span>
+                    </div>
+                    <div id="results-list"
+                        class="divide-y divide-gray-200 dark:divide-gray-700 max-h-60 overflow-y-auto"></div>
+                </div>
+
+                <!-- Single result fields -->
+                <div id="result-fields" class="hidden p-4 space-y-4 bg-surface-light dark:bg-surface-dark pb-24">
+                    <div id="result-fields-content"></div>
+                    <button onclick="newSearch()"
+                        class="w-full mt-6 bg-primary text-white px-4 py-2 rounded font-semibold text-sm shadow hover:opacity-90 transition flex items-center justify-center space-x-2">
+                        <span class="material-icons text-lg">search</span>
+                        <span>Nueva búsqueda</span>
+                    </button>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- SCANNER MODAL -->
+    <div id="scanner-modal">
+        <div class="w-full max-w-md px-4 mb-4 flex justify-between items-center">
+            <span class="text-white font-semibold text-sm">Apunte al código de barras</span>
+            <button onclick="stopScanner()"
+                class="text-white bg-gray-600 hover:bg-gray-500 rounded-full w-9 h-9 flex items-center justify-center shadow-lg transition">
+                <span class="material-icons">close</span>
+            </button>
+        </div>
+        <div id="reader" class="mx-4 bg-black"></div>
+        <p class="text-gray-400 text-xs mt-4 text-center px-8">Alinee el código de barras dentro del recuadro</p>
+    </div>
+
+    <!-- TOAST -->
+    <div id="toast"
+        class="fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-5 py-3 rounded shadow-xl text-sm font-semibold z-50 hidden opacity-90 backdrop-blur-sm max-w-sm">
+        <div class="flex items-center space-x-2">
+            <span class="material-icons text-lg" id="toast-icon">info</span>
+            <div class="flex flex-col">
+                <span id="toast-title"></span>
+                <span id="toast-msg" class="text-xs font-normal"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Install Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('SW registrado', reg))
+                    .catch(err => console.log('SW error', err));
+            });
+        }
+
+        let excelData = [];
+        let html5QrCode = null;
+        let scannerRunning = false;
+
+        // Google Sheets export URL (CSV format)
+        const GOOGLE_SHEETS_URL = 'https://docs.google.com/spreadsheets/d/1_qDeXNG0sFifbWjF0XknSsS8XVMYNhsn/export?format=csv';
+        const SYNC_INTERVAL = 5 * 60 * 1000; // Sincronizar cada 5 minutos
+        const DATA_LAST_SYNC = 'inventoryDataLastSync';
+
+        // Load persisted data on init
+        window.addEventListener('DOMContentLoaded', () => {
+            const saved = localStorage.getItem('inventoryData');
+            if (saved) {
+                try {
+                    excelData = JSON.parse(saved);
+                    if (excelData.length > 0) {
+                        document.getElementById('upload-prompt').classList.add('hidden');
+                        document.getElementById('data-loaded').classList.remove('hidden');
+                        const lastSync = localStorage.getItem(DATA_LAST_SYNC);
+                        const syncTime = lastSync ? new Date(parseInt(lastSync)).toLocaleTimeString('es-CR') : 'nunca';
+                        document.getElementById('record-count').textContent = excelData.length + ' registros (sincronizado: ' + syncTime + ')';
+                    }
+                } catch (e) {
+                    console.error('Error loading saved data', e);
+                }
+            }
+
+            // Auto-sync from Google Sheets on load
+            syncFromGoogleSheets();
+
+            // Set up periodic sync every 5 minutes
+            setInterval(syncFromGoogleSheets, SYNC_INTERVAL);
+        });
+
+        const COL_MAP = {
+            'CODIGO UPC': 'upc',
+            'ID INTERNO': 'idInterno', // Not displayed but used? Actually removed from display
+            'CODIGO SKU': 'sku',       // NetSuite Code
+            'DESCRIPCION': 'descripcion',
+            'AS 400': 'as400',
+            'NUMERO DE PARTE': 'numParte',  // Removed from display
+            'ESTATUS': 'estatus',
+            'TIPO': 'tipo',
+            'EXISTENCIA': 'existencia',
+            'PRECIO FINAL': 'precioFinal',
+        };
+
+        const DISPLAY_FIELDS = [
+            { key: 'upc', label: 'Código UPC' },
+            { key: 'sku', label: 'Código NetSuite' },
+            { key: 'descripcion', label: 'Descripción' },
+            { key: 'existencia', label: 'Cantidad en Existencia' },
+            { key: 'precioFinal', label: 'Precio Final', isCurrency: true },
+            { key: 'estatus', label: 'Estatus', isSelect: true },
+            { key: 'tipo', label: 'Tipo', isSelect: true },
+            { key: 'as400', label: 'Código AS400' },
+        ];
+
+        // ---- SYNC FROM GOOGLE SHEETS ----
+        function syncFromGoogleSheets() {
+            const syncBtn = document.getElementById('sync-btn');
+            if (syncBtn) syncBtn.classList.add('animate-spin');
+
+            fetch(GOOGLE_SHEETS_URL, { mode: 'no-cors', cache: 'no-store' })
+                .then(response => response.text())
+                .then(csv => {
+                    const lines = csv.trim().split('\n');
+                    if (lines.length < 2) throw new Error('CSV vacío o inválido');
+
+                    const headers = lines[0].split(',').map(h => h.trim().toUpperCase());
+                    const data = [];
+
+                    for (let i = 1; i < lines.length; i++) {
+                        const values = lines[i].split(',').map(v => v.trim());
+                        const row = {};
+                        headers.forEach((header, idx) => {
+                            row[header] = values[idx] || '';
+                        });
+                        data.push(row);
+                    }
+
+                    // Map columns and remove duplicates by SKU
+                    const duplicatesRemoved = data.length;
+                    excelData = removeDuplicatesBySKU(
+                        data.map(row => {
+                            const mapped = {};
+                            for (const [excelCol, key] of Object.entries(COL_MAP)) {
+                                const found = headers.find(h => h === excelCol);
+                                const headerIdx = headers.indexOf(found);
+                                mapped[key] = headerIdx >= 0 ? row[found] || '' : '';
+                            }
+                            return mapped;
+                        })
+                    );
+
+                    // Persist to localStorage
+                    try {
+                        localStorage.setItem('inventoryData', JSON.stringify(excelData));
+                        localStorage.setItem(DATA_LAST_SYNC, Date.now().toString());
+                        console.log('Sincronización exitosa: ' + excelData.length + ' registros únicos');
+
+                        // Update UI
+                        if (excelData.length > 0) {
+                            document.getElementById('upload-prompt').classList.add('hidden');
+                            document.getElementById('data-loaded').classList.remove('hidden');
+                            const now = new Date();
+                            const syncDate = now.toLocaleDateString('es-CR');
+                            const syncTime = now.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
+                            const duplicatesCount = duplicatesRemoved - excelData.length;
+
+                            document.getElementById('record-count').textContent = excelData.length + ' registros';
+
+                            showToastSync('✅ Base de datos cargada',
+                                'Fecha: ' + syncDate + ' - ' + syncTime + '\n' +
+                                'Registros: ' + excelData.length + ' (sin duplicados)');
+                        }
+                    } catch (e) {
+                        console.error('Error guardando datos', e);
+                        showToastSync('⚠️ Error', 'No se pudo guardar los datos');
+                    }
+                })
+                .catch(err => {
+                    console.log('Error sincronizando (offline?): ', err);
+                    showToastSync('📡 Sin conexión', 'Usando datos guardados localmente');
+                })
+                .finally(() => {
+                    if (syncBtn) syncBtn.classList.remove('animate-spin');
+                });
+        }
+
+        // Remove duplicates keeping only the first occurrence by SKU
+        function removeDuplicatesBySKU(data) {
+            const seen = new Set();
+            const unique = [];
+            for (const item of data) {
+                const sku = (item.sku || '').trim();
+                if (sku && !seen.has(sku)) {
+                    seen.add(sku);
+                    unique.push(item);
+                } else if (!sku) {
+                    // Si no hay SKU, agregar de todas formas (sin validar duplicados)
+                    unique.push(item);
+                }
+            }
+            console.log('Duplicados removidos: ' + (data.length - unique.length));
+            return unique;
+        }
+
+        // ---- EXCEL (Manual upload backup) ----
+        function handleExcelUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const wb = XLSX.read(data, { type: 'array' });
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+                    excelData = removeDuplicatesBySKU(
+                        json.map(row => {
+                            const mapped = {};
+                            for (const [excelCol, key] of Object.entries(COL_MAP)) {
+                                const found = Object.keys(row).find(k => k.trim().toUpperCase() === excelCol);
+                                mapped[key] = found ? String(row[found]).trim() : '';
+                            }
+                            return mapped;
+                        })
+                    );
+
+                    // Persist to localStorage for offline use
+                    try {
+                        localStorage.setItem('inventoryData', JSON.stringify(excelData));
+                        localStorage.setItem(DATA_LAST_SYNC, Date.now().toString());
+                        showToast('Datos guardados - ' + excelData.length + ' registros únicos');
+                    } catch (e) {
+                        showToast('Catálogo muy grande para guardar offline');
+                    }
+
+                    document.getElementById('upload-prompt').classList.add('hidden');
+                    document.getElementById('data-loaded').classList.remove('hidden');
+                    document.getElementById('record-count').textContent = excelData.length + ' registros';
+
+                    // Clear search field on new load
+                    document.getElementById('search-input').value = '';
+                    showNoResult();
+
+                } catch (err) {
+                    showToast('Error al leer el archivo');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // ---- SCANNER ----
+        function startScanner() {
+            if (excelData.length === 0) { showToast('Primero cargue un archivo Excel'); return; }
+            document.getElementById('scanner-modal').classList.add('active');
+
+            // Safety check for Html5Qrcode
+            if (typeof Html5Qrcode === 'undefined') {
+                showToast('Librería de escáner no cargada (offline?)');
+                return;
+            }
+
+            html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start(
+                { facingMode: "environment" },
+                {
+                    fps: 15, qrbox: { width: 280, height: 150 }, aspectRatio: 1.0,
+                    formatsToSupport: [
+                        Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+                        Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+                        Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+                        Html5QrcodeSupportedFormats.ITF
+                    ]
+                },
+                (decodedText) => {
+                    stopScanner();
+                    document.getElementById('search-input').value = decodedText;
+                    executeSearch();
+                },
+                (errorMessage) => {
+                    // ignore scan errors
+                }
+            ).catch((err) => {
+                console.error(err);
+                showToast('No se pudo acceder a la cámara. Verifique permisos o HTTPS.');
+                document.getElementById('scanner-modal').classList.remove('active');
+            });
+            scannerRunning = true;
+        }
+
+        function stopScanner() {
+            if (html5QrCode && scannerRunning) {
+                html5QrCode.stop().then(() => { html5QrCode.clear(); scannerRunning = false; }).catch(() => { });
+            }
+            document.getElementById('scanner-modal').classList.remove('active');
+        }
+
+        // ---- SEARCH ----
+        function executeSearch() {
+            const query = document.getElementById('search-input').value.trim();
+            if (!query) return;
+            if (excelData.length === 0) { showToast('Primero cargue un archivo Excel'); return; }
+
+            const q = query.toUpperCase();
+            const qNorm = query.replace(/^0+/, '');
+
+            const results = excelData.filter(item => {
+                // Match UPC
+                const upcNorm = (item.upc || '').replace(/^0+/, '');
+                if (upcNorm === qNorm || item.upc === query) return true;
+                // Match SKU (NetSuite)
+                if (item.sku === query) return true;
+                // Match Description
+                if ((item.descripcion || '').toUpperCase().includes(q)) return true;
+                return false;
+            });
+
+            if (results.length === 0) {
+                showToast('No se encontraron resultados');
+                showNoResult();
+            } else if (results.length === 1) {
+                showSingleResult(results[0]);
+            } else {
+                showMultipleResults(results);
+            }
+        }
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && document.activeElement.id === 'search-input') executeSearch();
+        });
+
+        // ---- RENDER ----
+        function showNoResult() {
+            document.getElementById('no-result').classList.remove('hidden');
+            document.getElementById('result-fields').classList.add('hidden');
+            document.getElementById('multi-results').classList.add('hidden');
+        }
+
+        function showMultipleResults(results) {
+            document.getElementById('no-result').classList.add('hidden');
+            document.getElementById('result-fields').classList.add('hidden');
+            const container = document.getElementById('multi-results');
+            container.classList.remove('hidden');
+            document.getElementById('results-count').textContent = results.length + ' resultados';
+
+            const list = document.getElementById('results-list');
+            list.innerHTML = '';
+            results.forEach((item) => {
+                const row = document.createElement('button');
+                row.className = 'w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition flex flex-col border-b last:border-0 border-gray-100 dark:border-gray-700';
+                row.innerHTML =
+                    '<span class="text-sm font-semibold text-gray-700 dark:text-gray-200 truncate">' + (item.descripcion || '—') + '</span>' +
+                    '<span class="text-xs text-gray-500 dark:text-gray-400">SKU: ' + (item.sku || '-') + ' &nbsp;|&nbsp; UPC: ' + (item.upc || '-') + '</span>';
+                row.onclick = () => showSingleResult(item);
+                list.appendChild(row);
+            });
+        }
+
+        function showSingleResult(item) {
+            document.getElementById('no-result').classList.add('hidden');
+            document.getElementById('multi-results').classList.add('hidden');
+            const container = document.getElementById('result-fields');
+            container.classList.remove('hidden');
+            const contentContainer = document.getElementById('result-fields-content');
+            contentContainer.innerHTML = '';
+
+            DISPLAY_FIELDS.forEach((field) => {
+                let value = item[field.key] || '—';
+                const div = document.createElement('div');
+                div.className = 'space-y-1';
+
+                const label = document.createElement('label');
+                label.className = 'text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold tracking-wider';
+                label.textContent = field.label;
+                div.appendChild(label);
+
+                if (field.isSelect) {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'relative w-full';
+                    const inner = document.createElement('div');
+                    inner.className = 'w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-2 text-sm text-gray-700 dark:text-gray-300 flex justify-between items-center';
+                    inner.innerHTML = `<span>${value}</span><span class="material-icons text-gray-400 text-sm">arrow_drop_down</span>`;
+                    wrapper.appendChild(inner);
+                    div.appendChild(wrapper);
+                } else {
+                    const valDiv = document.createElement('div');
+                    valDiv.className = 'w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300';
+                    if (field.isCurrency) {
+                        const num = parseFloat(value);
+                        valDiv.textContent = !isNaN(num)
+                            ? '₡ ' + num.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                            : value;
+                    } else if (field.key === 'existencia') {
+                        valDiv.className = 'w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300 font-semibold';
+                        valDiv.textContent = value;
+                    } else {
+                        valDiv.textContent = value;
+                    }
+                    div.appendChild(valDiv);
+                }
+
+                contentContainer.appendChild(div);
+
+                if (field.key === 'precioFinal') {
+                    const hr = document.createElement('hr');
+                    hr.className = 'border-gray-200 dark:border-gray-700 my-2';
+                    contentContainer.appendChild(hr);
+                }
+            });
+        }
+
+        function newSearch() {
+            document.getElementById('search-input').value = '';
+            document.getElementById('search-input').focus();
+            showNoResult();
+        }
+
+        // ---- TOAST ----
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-icon').textContent = 'info';
+            document.getElementById('toast-title').textContent = msg;
+            document.getElementById('toast-msg').textContent = '';
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        function showToastSync(title, details) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-icon').textContent = 'check_circle';
+            document.getElementById('toast-title').textContent = title;
+            document.getElementById('toast-msg').textContent = details;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 5000);
+        }
+    </script>
+
+</body>
+
+</html>
