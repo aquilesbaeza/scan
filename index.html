@@ -3,12 +3,15 @@
 
 <head>
     <meta charset="utf-8" />
-    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" />
+    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport" />
     <meta content="#3b6e9c" name="theme-color" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Inventario Escáner" />
     <title>Escáner de Inventario</title>
     <!-- PWA -->
     <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23ef4444' width='192' height='192'/><text x='50%' y='50%' font-size='120' font-weight='bold' text-anchor='middle' dominant-baseline='middle' fill='white'>📦</text></svg>">
 
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
     <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
@@ -45,6 +48,7 @@
     <style>
         body {
             font-family: 'Open Sans', sans-serif;
+            padding: max(0px, env(safe-area-inset-top)) max(0px, env(safe-area-inset-right)) max(0px, env(safe-area-inset-bottom)) max(0px, env(safe-area-inset-left));
         }
 
         .no-scrollbar::-webkit-scrollbar {
@@ -54,6 +58,7 @@
         .no-scrollbar {
             -ms-overflow-style: none;
             scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
         }
 
         /* Scanner modal */
@@ -494,7 +499,20 @@
                 }
             ).catch((err) => {
                 console.error(err);
-                showToast('No se pudo acceder a la cámara. Verifique permisos o HTTPS.');
+                let mensaje = 'No se pudo acceder a la cámara.';
+
+                // Detectar tipo de error específico
+                if (err.message && err.message.includes('Permission')) {
+                    mensaje = 'Permiso denegado. En iPhone: Ajustes > Safari > Cámara > Permitir';
+                } else if (err.message && err.message.includes('NotSupported')) {
+                    mensaje = 'Cámara no soportada en este navegador.';
+                } else if (err.message && err.message.includes('NotAllowed')) {
+                    mensaje = 'Debe permitir acceso a la cámara en los ajustes.';
+                } else {
+                    mensaje = 'Verifique permisos, HTTPS y que el navegador soporte cámara.';
+                }
+
+                showToast(mensaje);
                 document.getElementById('scanner-modal').classList.remove('active');
             });
             scannerRunning = true;
