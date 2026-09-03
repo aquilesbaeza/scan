@@ -232,11 +232,6 @@
                 <!-- Single result fields -->
                 <div id="result-fields" class="hidden p-4 space-y-4 bg-surface-light dark:bg-surface-dark pb-24">
                     <div id="result-fields-content"></div>
-                    <button onclick="newSearch()"
-                        class="w-full mt-6 bg-primary text-white px-4 py-2 rounded font-semibold text-sm shadow hover:opacity-90 transition flex items-center justify-center space-x-2">
-                        <span class="material-icons text-lg">search</span>
-                        <span>Nueva búsqueda</span>
-                    </button>
                 </div>
 
             </div>
@@ -568,8 +563,16 @@
             }
         }
 
+        // Buscar al presionar Enter
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Enter' && document.activeElement.id === 'search-input') executeSearch();
+        });
+
+        // Limpiar resultado previo cuando se escribe
+        document.getElementById('search-input').addEventListener('input', function() {
+            if (this.value.length === 0) {
+                showNoResult();
+            }
         });
 
         // ---- RENDER ----
@@ -606,6 +609,12 @@
             container.classList.remove('hidden');
             const contentContainer = document.getElementById('result-fields-content');
             contentContainer.innerHTML = '';
+
+            // Preparar para siguiente búsqueda
+            setTimeout(() => {
+                document.getElementById('search-input').focus();
+                document.getElementById('search-input').select();
+            }, 300);
 
             DISPLAY_FIELDS.forEach((field) => {
                 const div = document.createElement('div');
@@ -645,11 +654,6 @@
             });
         }
 
-        function newSearch() {
-            document.getElementById('search-input').value = '';
-            document.getElementById('search-input').focus();
-            showNoResult();
-        }
 
         // ---- TOAST ----
         function showToast(msg) {
