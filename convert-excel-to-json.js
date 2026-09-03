@@ -5,7 +5,7 @@ const path = require('path');
 const XLSX = require('xlsx');
 
 const EXCEL_FILES = [
-    '1set.xls',
+    '3set.xlsx',
 ];
 const COLUMN_MAPPINGS = {
     sku: ['CODIGO SKU', 'SKU', 'CÓDIGO SKU', 'codigo'],

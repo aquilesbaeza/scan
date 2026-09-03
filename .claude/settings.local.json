@@ -32,7 +32,11 @@
       "Bash(git commit -m 'data: Sincronización diaria - Excel 31/8/2026 *)",
       "Bash(git commit -m 'data: Sincronización diaria - Excel 1/9/2026 *)",
       "Bash(rm \"31AGOSTO.xls\" \"ResultadosAPLICACIONDETIENDASCR627.xls\" \"ResultadosAPLICACIONDETIENDASCR934 \\(1\\).xls\")",
-      "Bash(git commit -m 'chore: Eliminar archivos XLS antiguos - mantener solo 1set.xls *)"
+      "Bash(git commit -m 'chore: Eliminar archivos XLS antiguos - mantener solo 1set.xls *)",
+      "Bash(git commit -m 'refactor: Mejorar compatibilidad con Safari iOS y notches *)",
+      "Bash(git commit -m 'feat: Flujo continuo de búsqueda sin botón '\\\\''Nueva búsqueda'\\\\'' *)",
+      "Bash(rm \"1set.xls\")",
+      "Bash(git commit -m 'data: Sincronizacion diaria - Excel 3set \\(3/9/2026\\) *)"
     ]
   }
 }
