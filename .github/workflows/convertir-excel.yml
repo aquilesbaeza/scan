@@ -1,0 +1,47 @@
+name: convertir-excel
+
+# Al subir un Excel a data/, se regenera products.json y todos los
+# dispositivos lo reciben la proxima vez que abren la app.
+on:
+  push:
+    paths:
+      - 'data/**.xlsx'
+      - 'data/**.xls'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  convertir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm install --no-audit --no-fund
+
+      - name: Convertir el Excel mas reciente de data/
+        run: |
+          EXCEL=$(ls -t data/*.xlsx data/*.xls 2>/dev/null | head -1)
+          if [ -z "$EXCEL" ]; then
+            echo "No hay ningun Excel en data/"
+            exit 1
+          fi
+          echo "Convirtiendo: $EXCEL"
+          node convert-excel-to-json.js "$EXCEL"
+
+      - name: Publicar el catalogo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add products.json sync-info.json
+          if git diff --staged --quiet; then
+            echo "El catalogo no cambio"
+          else
+            git commit -m "data: Catalogo actualizado desde $(ls -t data/*.xlsx data/*.xls 2>/dev/null | head -1)"
+            git push
+          fi

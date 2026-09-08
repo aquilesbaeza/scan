@@ -1,5 +1,9 @@
 node_modules/
+.certs/
+
+# Los Excel no se versionan, salvo el que se sube para sincronizar (data/).
 *.xls
 *.xlsx
 *.csv
-.certs/
+!data/*.xls
+!data/*.xlsx

@@ -465,6 +465,7 @@
                 if (cached && cached.productos && cached.productos.length) {
                     if (cached.schema === CATALOG_SCHEMA) {
                         setCatalog(cached.productos, cached.metadata, cached.tiendas);
+                        buscarActualizacion(cached.metadata);   // en segundo plano
                         return;
                     }
                     console.log('Catálogo guardado desactualizado; se vuelve a cargar.');
@@ -499,6 +500,39 @@
             } catch (err) {
                 console.warn('No se pudo cargar products.json:', err);
                 showNoData('No se pudo descargar el catálogo. Arrastre el Excel para cargarlo.');
+            }
+        }
+
+        // ---- SINCRONIZACION ----
+        // sync-info.json pesa unos pocos bytes: se consulta en cada arranque para
+        // saber si el catalogo publicado es mas nuevo que el guardado aqui. Asi,
+        // subir el Excel en un solo dispositivo actualiza a todos los demas.
+        async function buscarActualizacion(metadataLocal) {
+            if (location.protocol === 'file:') return;
+
+            try {
+                const res = await fetch('sync-info.json', { cache: 'no-store' });
+                if (!res.ok) return;
+                const sync = await res.json();
+
+                const publicado = new Date(sync.timestamp);
+                const local = new Date((metadataLocal && metadataLocal.generado) || 0);
+                if (!(publicado > local)) return;
+
+                const resProd = await fetch('products.json', { cache: 'no-store' });
+                if (!resProd.ok) return;
+                const data = await resProd.json();
+                const productos = Object.values(data.productos || {});
+                if (!productos.length) return;
+
+                setCatalog(productos, data.metadata, data.tiendas);
+                await idbSet(CATALOG_KEY, { schema: CATALOG_SCHEMA, productos, metadata: data.metadata, tiendas: data.tiendas });
+
+                const fecha = publicado.toLocaleDateString('es-CR');
+                showToastSync('Base de datos actualizada',
+                    productos.length.toLocaleString('es-CR') + ' registros • ' + fecha);
+            } catch (err) {
+                console.warn('No se pudo comprobar actualizaciones:', err);
             }
         }
 
