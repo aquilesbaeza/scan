@@ -35,6 +35,9 @@ function buildHeaderIndex(headers) {
     return index;
 }
 
+// Ubicaciones excluidas: 80xxx (mercancia en reparacion) y 90xxx (dañada).
+const UBICACION_EXCLUIDA = /^(80|90)\d+$/;
+
 // "OD | CR | 623 TIENDA URUCA" -> { codigo: '623', nombre: 'URUCA' }
 function parseTienda(raw) {
     let s = String(raw || '').trim();
@@ -111,7 +114,7 @@ function convert(excelPath) {
         // Existencia por unidad de negocio (una fila por tienda).
         const cant = parseFloat(val(row, 'existencia'));
         const t = parseTienda(val(row, 'tienda'));
-        if (t && t.codigo) {
+        if (t && t.codigo && !UBICACION_EXCLUIDA.test(t.codigo)) {
             if (!tiendas[t.codigo]) tiendas[t.codigo] = t.nombre;
             if (!isNaN(cant) && cant !== 0) {
                 const acc = existPorSku.get(sku);

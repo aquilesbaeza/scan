@@ -521,6 +521,9 @@
             return index;
         }
 
+        // Ubicaciones excluidas: 80xxx (mercancia en reparacion) y 90xxx (dañada).
+        const UBICACION_EXCLUIDA = /^(80|90)\d+$/;
+
         // "OD | CR | 623 TIENDA URUCA" -> { codigo: '623', nombre: 'URUCA' }
         function parseTienda(raw) {
             let s = String(raw || '').trim();
@@ -588,7 +591,7 @@
 
                 const cant = parseFloat(val(row, 'existencia'));
                 const t = parseTienda(val(row, 'tienda'));
-                if (t && t.codigo) {
+                if (t && t.codigo && !UBICACION_EXCLUIDA.test(t.codigo)) {
                     if (!tiendas[t.codigo]) tiendas[t.codigo] = t.nombre;
                     if (!isNaN(cant) && cant !== 0) {
                         const acc = existPorSku.get(sku);
@@ -921,10 +924,9 @@
             const wrap = document.createElement('div');
             wrap.className = 'space-y-1 pt-2';
 
-            const existencias = Array.isArray(item.existencias) ? item.existencias : [];
-            const total = typeof item.existenciaTotal === 'number'
-                ? item.existenciaTotal
-                : existencias.reduce((s, e) => s + e[1], 0);
+            const existencias = (Array.isArray(item.existencias) ? item.existencias : [])
+                .filter(e => !UBICACION_EXCLUIDA.test(e[0]));
+            const total = existencias.reduce((s, e) => s + e[1], 0);
 
             const header = document.createElement('div');
             header.className = 'flex items-center justify-between';
