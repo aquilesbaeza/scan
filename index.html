@@ -420,7 +420,16 @@
             const time = fecha.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
             document.getElementById('record-count').textContent =
                 excelData.length.toLocaleString('es-CR') + ' registros • ' + date + ' - ' + time;
+
+            // El lector handheld escribe el UPC y manda Enter: el campo debe
+            // estar enfocado sin que nadie lo toque. En movil no se enfoca solo
+            // para no abrir el teclado encima de la pantalla.
+            if (!esMovil()) {
+                setTimeout(() => document.getElementById('search-input').focus(), 100);
+            }
         }
+
+        const esMovil = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
         function showNoData(msg) {
             document.getElementById('upload-prompt').classList.add('hidden');
@@ -685,11 +694,18 @@
 
         // ---- SCANNER ----
         function startScanner() {
-            if (excelData.length === 0) { showToast('Primero cargue un archivo Excel'); return; }
+            if (excelData.length === 0) { showToast('Primero cargue la base de datos'); return; }
+
+            // Android e iOS solo dan la cámara en contexto seguro (https o localhost).
+            if (!window.isSecureContext) {
+                showToast('La cámara necesita HTTPS. Abra la app por https:// o use el lector conectado.');
+                return;
+            }
+
             document.getElementById('scanner-modal').classList.add('active');
 
             if (typeof Html5Qrcode === 'undefined') {
-                showToast('Librería de escáner no cargada (offline?)');
+                showToast('Librería de escáner no cargada');
                 return;
             }
 
