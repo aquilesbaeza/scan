@@ -344,6 +344,9 @@
         const DB_NAME = 'scanInventory';
         const STORE = 'kv';
         const CATALOG_KEY = 'catalog';
+        // Subir este numero descarta los catalogos ya guardados en los dispositivos
+        // cuando cambia la forma de los datos (p.ej. al filtrar ubicaciones).
+        const CATALOG_SCHEMA = 4;
 
         // Algunos contextos (file://, modo privado) dejan indexedDB.open colgado
         // sin resolver ni fallar. El timeout evita que la app quede en "Cargando...".
@@ -446,8 +449,11 @@
             try {
                 const cached = await withTimeout(idbGet(CATALOG_KEY), 4000, 'cache local');
                 if (cached && cached.productos && cached.productos.length) {
-                    setCatalog(cached.productos, cached.metadata, cached.tiendas);
-                    return;
+                    if (cached.schema === CATALOG_SCHEMA) {
+                        setCatalog(cached.productos, cached.metadata, cached.tiendas);
+                        return;
+                    }
+                    console.log('Catálogo guardado desactualizado; se vuelve a cargar.');
                 }
             } catch (e) {
                 console.warn('Cache no disponible:', e);
@@ -472,7 +478,7 @@
                 if (!productos.length) throw new Error('JSON sin productos');
 
                 setCatalog(productos, data.metadata, data.tiendas);
-                idbSet(CATALOG_KEY, { productos, metadata: data.metadata, tiendas: data.tiendas })
+                idbSet(CATALOG_KEY, { schema: CATALOG_SCHEMA, productos, metadata: data.metadata, tiendas: data.tiendas })
                     .catch(e => console.warn('No se pudo cachear:', e));
                 showToastSync('Base de datos cargada',
                     productos.length.toLocaleString('es-CR') + ' registros guardados en este dispositivo');
@@ -630,7 +636,7 @@
                     setCatalog(productos, metadata, tiendas);
 
                     try {
-                        await withTimeout(idbSet(CATALOG_KEY, { productos, metadata, tiendas }), 60000, 'guardar cache');
+                        await withTimeout(idbSet(CATALOG_KEY, { schema: CATALOG_SCHEMA, productos, metadata, tiendas }), 60000, 'guardar cache');
                         showToastSync('Base de datos lista',
                             productos.length.toLocaleString('es-CR') + ' productos guardados en este dispositivo');
                     } catch (err) {
