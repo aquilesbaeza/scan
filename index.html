@@ -1130,8 +1130,24 @@
         async function publicarATodos() {
             if (!excelData.length) { showToast('Primero cargue la base de datos'); return; }
 
-            let token = obtenerToken() || pedirToken();
-            if (!token) return;
+            let token = obtenerToken();
+            if (!token) {
+                token = pedirToken();
+                if (!token) return;
+                // Se comprueba de una vez, para no descubrir a mitad de la subida
+                // que el token no sirve.
+                estadoPublicacion('Comprobando el token...');
+                try {
+                    const repo = await api('', token);
+                    if (!repo.permissions || !repo.permissions.push) {
+                        throw new Error('El token no tiene permiso de escritura (Contents: Read and write)');
+                    }
+                } catch (err) {
+                    estadoPublicacion(err.message);
+                    try { localStorage.removeItem(TOKEN_KEY); } catch (e) { }
+                    return;
+                }
+            }
 
             const boton = document.getElementById('btn-publicar');
             boton.disabled = true;
