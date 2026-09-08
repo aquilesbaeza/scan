@@ -1,7 +1,9 @@
 {
-  "timestamp": "2026-08-30T16:45:00Z",
-  "total_productos": 13209,
-  "total_codigos_barras": 16656,
-  "versión": "1.0",
+  "timestamp": "2026-09-08T09:04:01.178Z",
+  "origen": "6211 07 09 2026.xlsx",
+  "total_productos": 13225,
+  "total_codigos_barras": 16661,
+  "total_tiendas": 22,
+  "version": "3.0",
   "status": "actualizado"
 }

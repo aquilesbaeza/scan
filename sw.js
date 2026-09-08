@@ -1,102 +1,58 @@
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = `escaner-${CACHE_VERSION}`;
+
+// Todo lo necesario para arrancar sin internet. El catálogo en sí vive en
+// IndexedDB (lo guarda index.html), esto solo cachea el "shell" de la app.
 const ASSETS_TO_CACHE = [
-    '/',
-    '/index.html',
-    '/manifest.json',
-    '/products.json',
-    'https://cdn.tailwindcss.com',
-    'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js',
-    'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
-    'https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap',
-    'https://fonts.googleapis.com/icon?family=Material+Icons'
+    './',
+    './index.html',
+    './manifest.json',
+    './products.json',
+    './vendor/tailwind.js',
+    './vendor/xlsx.full.min.js',
+    './vendor/html5-qrcode.min.js',
+    './vendor/fonts.css',
+    './vendor/fonts/flUhRq6tzZclQEJ-Vdg-IuiaDsNc.woff2',
+    './vendor/fonts/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-muw.woff2',
+    './vendor/fonts/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSGmu1aB.woff2',
 ];
 
-// Instalar y cachear assets
 self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(ASSETS_TO_CACHE).catch(() => {
-                // Continuar si algún asset no está disponible
-                return Promise.resolve();
-            });
-        })
+        caches.open(CACHE_NAME).then((cache) =>
+            // addAll falla en bloque si un solo asset falla; se cachea uno a uno.
+            Promise.all(ASSETS_TO_CACHE.map((url) =>
+                cache.add(url).catch((err) => console.warn('No se pudo cachear', url, err))
+            ))
+        )
     );
     self.skipWaiting();
 });
 
-// Activar y limpiar caches antiguos
 self.addEventListener('activate', (event) => {
     event.waitUntil(
-        caches.keys().then((cacheNames) => {
-            return Promise.all(
-                cacheNames.map((cacheName) => {
-                    if (cacheName !== CACHE_NAME) {
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-        })
+        caches.keys().then((names) =>
+            Promise.all(names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n)))
+        )
     );
     self.clients.claim();
 });
 
-// Fetch: primero online, sino cache
+// Cache primero: la app debe abrir igual de rápido con o sin red.
 self.addEventListener('fetch', (event) => {
-    if (event.request.method !== 'GET') {
-        return;
-    }
+    if (event.request.method !== 'GET') return;
+    if (!event.request.url.startsWith(self.location.origin)) return;
 
-    const url = new URL(event.request.url);
-
-    // Para products.json, intentar actualizar en background
-    if (url.pathname.endsWith('products.json')) {
-        event.respondWith(
-            fetch(event.request)
-                .then((response) => {
-                    const cache = caches.open(CACHE_NAME);
-                    cache.then((c) => c.put(event.request, response.clone()));
-                    return response;
-                })
-                .catch(() => {
-                    return caches.match(event.request);
-                })
-        );
-        return;
-    }
-
-    // Para el resto, caché primero, sino online
     event.respondWith(
-        caches.match(event.request).then((response) => {
-            return response || fetch(event.request).then((response) => {
-                const cache = caches.open(CACHE_NAME);
-                cache.then((c) => c.put(event.request, response.clone()));
+        caches.match(event.request).then((cached) => {
+            if (cached) return cached;
+            return fetch(event.request).then((response) => {
+                if (response && response.ok) {
+                    const copy = response.clone();
+                    caches.open(CACHE_NAME).then((c) => c.put(event.request, copy));
+                }
                 return response;
-            });
+            }).catch(() => cached);
         })
     );
 });
-
-// Sincronización en background
-self.addEventListener('sync', (event) => {
-    if (event.tag === 'sync-inventory') {
-        event.waitUntil(syncInventory());
-    }
-});
-
-async function syncInventory() {
-    try {
-        const response = await fetch('/sync-info');
-        const data = await response.json();
-        // Notificar a los clientes
-        const clients = await self.clients.matchAll();
-        clients.forEach(client => {
-            client.postMessage({
-                type: 'SYNC_UPDATED',
-                data: data
-            });
-        });
-    } catch (error) {
-        console.error('Sync failed:', error);
-    }
-}

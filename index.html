@@ -13,11 +13,11 @@
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23ef4444' width='192' height='192'/><text x='50%' y='50%' font-size='120' font-weight='bold' text-anchor='middle' dominant-baseline='middle' fill='white'>📦</text></svg>">
 
-    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <!-- Todo local: la app funciona sin internet -->
+    <script src="vendor/tailwind.js"></script>
+    <link href="vendor/fonts.css" rel="stylesheet" />
+    <script src="vendor/xlsx.full.min.js"></script>
+    <script src="vendor/html5-qrcode.min.js"></script>
     <script>
         tailwind.config = {
             darkMode: "class",
@@ -170,6 +170,23 @@
                 </div>
             </div>
 
+            <!-- Sin datos: cargar Excel -->
+            <div id="no-data" class="hidden p-6 mt-6">
+                <div onclick="document.getElementById('excel-input').click()"
+                    class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                    <span class="material-icons text-5xl text-gray-400 block mb-2">upload_file</span>
+                    <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">Arrastre el Excel aquí</p>
+                    <p id="no-data-msg" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Se convierte a JSON y queda guardado en este dispositivo.</p>
+                </div>
+            </div>
+
+            <!-- Progreso de importacion -->
+            <div id="import-progress" class="hidden px-6 py-4 flex items-center justify-center space-x-2">
+                <div class="animate-spin"><span class="material-icons text-primary">refresh</span></div>
+                <span class="text-sm text-gray-500">Convirtiendo Excel a JSON...</span>
+            </div>
+
             <!-- Data loaded state -->
             <div id="data-loaded" class="hidden">
 
@@ -252,34 +269,19 @@
             <div class="p-4 space-y-3">
                 <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700" onclick="document.getElementById('manual-excel-input').click()">
                     <span class="material-icons text-4xl text-gray-400 mx-auto block">upload_file</span>
-                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">Click o arrastra XLS aquí</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">Click o arrastra el Excel aquí</p>
+                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Se convierte a JSON y queda en este dispositivo</p>
                 </div>
 
                 <input type="file" id="manual-excel-input" accept=".xls,.xlsx" class="hidden" onchange="handleManualExcelUpload(event)">
 
-                <div id="conversion-progress" class="hidden space-y-2">
-                    <div class="flex items-center space-x-2">
-                        <div class="animate-spin">
-                            <span class="material-icons text-blue-500">refresh</span>
-                        </div>
-                        <span class="text-sm">Convirtiendo Excel...</span>
-                    </div>
-                </div>
+                <button onclick="downloadConvertedJson()" class="w-full bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 text-gray-800 dark:text-white px-3 py-2 rounded font-semibold text-sm transition">
+                    Descargar products.json
+                </button>
 
-                <div id="conversion-result" class="hidden space-y-3">
-                    <div class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100 p-3 rounded text-sm">
-                        <p class="font-semibold">✅ Conversión exitosa</p>
-                        <p id="result-count" class="text-xs mt-1"></p>
-                    </div>
-
-                    <button onclick="useConvertedData()" class="w-full bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded font-semibold text-sm transition">
-                        Usar esta BD ahora
-                    </button>
-
-                    <button onclick="downloadConvertedJson()" class="w-full bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 text-gray-800 dark:text-white px-3 py-2 rounded font-semibold text-sm transition">
-                        Descargar JSON
-                    </button>
-                </div>
+                <button onclick="clearCatalogCache()" class="w-full text-red-600 dark:text-red-400 px-3 py-2 rounded font-semibold text-sm hover:bg-red-50 dark:hover:bg-red-900/30 transition">
+                    Borrar base de datos del dispositivo
+                </button>
             </div>
         </div>
     </div>
@@ -296,6 +298,19 @@
         <div id="reader" class="mx-4 bg-black"></div>
         <p class="text-gray-400 text-xs mt-4 text-center px-8">Alinee el código de barras dentro del recuadro</p>
     </div>
+
+    <!-- DROP OVERLAY -->
+    <div id="drop-overlay"
+        class="hidden fixed inset-0 z-[60] bg-primary/80 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+        <div class="border-4 border-dashed border-white rounded-xl px-10 py-8 text-center">
+            <span class="material-icons text-white text-6xl block mb-2">file_download</span>
+            <p class="text-white font-bold text-lg">Suelte el Excel para cargarlo</p>
+            <p class="text-white/80 text-sm mt-1">Se convierte a JSON automáticamente</p>
+        </div>
+    </div>
+
+    <!-- Input global de Excel -->
+    <input type="file" id="excel-input" accept=".xls,.xlsx" class="hidden" onchange="handleExcelUpload(event)">
 
     <!-- TOAST -->
     <div id="toast"
@@ -320,144 +335,355 @@
         }
 
         let excelData = [];
+        let tiendasCatalogo = {};      // codigo -> nombre
+        let skuIndex = new Map();      // sku -> producto
+        let upcIndex = new Map();      // upc normalizado -> [productos]
         let html5QrCode = null;
         let scannerRunning = false;
         let scannedUpc = null;
-
-        // Load persisted data on init
-        window.addEventListener('DOMContentLoaded', () => {
-            loadProductsFromJSON();
-        });
-
-        const COL_MAP = {
-            'CODIGO UPC': 'upc',
-            'ID INTERNO': 'idInterno',
-            'CODIGO SKU': 'sku',
-            'DESCRIPCION': 'descripcion',
-            'AS 400': 'as400',
-            'NUMERO DE PARTE': 'numParte',
-            'ESTATUS': 'estatus',
-            'TIPO': 'tipo',
-            'EXISTENCIA': 'existencia',
-            'PRECIO FINAL': 'precioFinal',
-        };
 
         const DISPLAY_FIELDS = [
             { key: 'sku', label: 'Código SKU' },
             { key: 'descripcion', label: 'Descripción' },
             { key: 'upc', label: 'Código UPC' },
             { key: 'precio', label: 'Precio Final', isCurrency: true },
-            { key: 'existencia', label: 'Existencia' },
             { key: 'tipo', label: 'Tipo' },
             { key: 'estatus', label: 'Estatus' },
         ];
 
-        // ---- LOAD PRODUCTS FROM JSON ----
-        function loadProductsFromJSON() {
-            fetch('products.json')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.productos) {
-                        // Convertir objeto a array
-                        excelData = Object.entries(data.productos).map(([sku, product]) => ({
-                            sku: sku,
-                            ...product
-                        }));
+        // ---- CACHE LOCAL (IndexedDB) ----
+        // localStorage no sirve: el catálogo pesa varios MB y su cuota es de ~5MB.
+        const DB_NAME = 'scanInventory';
+        const STORE = 'kv';
+        const CATALOG_KEY = 'catalog';
 
-                        if (excelData.length > 0) {
-                            localStorage.setItem('inventoryData', JSON.stringify(excelData));
-                            document.getElementById('upload-prompt').classList.add('hidden');
-                            document.getElementById('data-loaded').classList.remove('hidden');
-
-                            // Mostrar fecha y hora en el contador
-                            const now = new Date();
-                            const date = now.toLocaleDateString('es-CR');
-                            const time = now.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
-                            document.getElementById('record-count').textContent = excelData.length + ' registros • ' + date + ' - ' + time;
-
-                            showToastSync('Base de datos cargada',
-                                'Fecha: ' + date + ' - ' + time + '\nRegistros: ' + excelData.length);
-                            console.log('Productos cargados: ' + excelData.length);
-                        }
-                    }
-                })
-                .catch(err => {
-                    console.log('Error cargando JSON:', err);
-                    const saved = localStorage.getItem('inventoryData');
-                    if (saved) {
-                        try {
-                            excelData = JSON.parse(saved);
-                            if (excelData.length > 0) {
-                                document.getElementById('upload-prompt').classList.add('hidden');
-                                document.getElementById('data-loaded').classList.remove('hidden');
-                                document.getElementById('record-count').textContent = excelData.length + ' registros';
-                            }
-                        } catch (e) {
-                            console.error('Error cargando datos guardados', e);
-                        }
-                    }
-                });
+        // Algunos contextos (file://, modo privado) dejan indexedDB.open colgado
+        // sin resolver ni fallar. El timeout evita que la app quede en "Cargando...".
+        function withTimeout(promise, ms, etiqueta) {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout: ' + etiqueta)), ms)),
+            ]);
         }
 
-        function removeDuplicatesBySKU(data) {
-            const seen = new Set();
-            const unique = [];
-            for (const item of data) {
-                const sku = (item.sku || '').trim();
-                if (sku && !seen.has(sku)) {
-                    seen.add(sku);
-                    unique.push(item);
-                } else if (!sku) {
-                    unique.push(item);
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                if (typeof indexedDB === 'undefined' || !indexedDB) return reject(new Error('IndexedDB no disponible'));
+                let req;
+                try { req = indexedDB.open(DB_NAME, 1); } catch (e) { return reject(e); }
+                req.onblocked = () => reject(new Error('IndexedDB bloqueada'));
+                req.onupgradeneeded = () => {
+                    if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        function idbGet(key) {
+            return openDB().then(db => new Promise((resolve, reject) => {
+                const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            }));
+        }
+
+        function idbSet(key, value) {
+            return openDB().then(db => new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE, 'readwrite');
+                tx.objectStore(STORE).put(value, key);
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            }));
+        }
+
+        // ---- ÍNDICES DE BÚSQUEDA ----
+        const normUpc = (v) => String(v || '').trim().replace(/^0+/, '');
+
+        function setCatalog(productos, metadata, tiendas) {
+            excelData = productos;
+            tiendasCatalogo = tiendas || {};
+            skuIndex = new Map();
+            upcIndex = new Map();
+
+            for (const item of excelData) {
+                if (item.sku) skuIndex.set(String(item.sku).trim(), item);
+                const codigos = item.codigos_barras || (item.upc ? [item.upc] : []);
+                for (const upc of codigos) {
+                    const k = normUpc(upc);
+                    if (!k) continue;
+                    const bucket = upcIndex.get(k);
+                    if (bucket) bucket.push(item); else upcIndex.set(k, [item]);
                 }
             }
-            console.log('Duplicados removidos: ' + (data.length - unique.length));
-            return unique;
+            showDataLoaded(metadata);
         }
 
-        // ---- EXCEL (Manual upload backup) ----
-        function handleExcelUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const wb = XLSX.read(data, { type: 'array' });
-                    const ws = wb.Sheets[wb.SheetNames[0]];
-                    const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        function showDataLoaded(metadata) {
+            document.getElementById('upload-prompt').classList.add('hidden');
+            document.getElementById('no-data').classList.add('hidden');
+            document.getElementById('data-loaded').classList.remove('hidden');
 
-                    excelData = removeDuplicatesBySKU(
-                        json.map(row => {
-                            const mapped = {};
-                            for (const [excelCol, key] of Object.entries(COL_MAP)) {
-                                const found = Object.keys(row).find(k => k.trim().toUpperCase() === excelCol);
-                                mapped[key] = found ? String(row[found]).trim() : '';
-                            }
-                            return mapped;
-                        })
-                    );
+            const fecha = metadata && metadata.generado ? new Date(metadata.generado) : new Date();
+            const date = fecha.toLocaleDateString('es-CR');
+            const time = fecha.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('record-count').textContent =
+                excelData.length.toLocaleString('es-CR') + ' registros • ' + date + ' - ' + time;
+        }
+
+        function showNoData(msg) {
+            document.getElementById('upload-prompt').classList.add('hidden');
+            document.getElementById('data-loaded').classList.add('hidden');
+            document.getElementById('no-data').classList.remove('hidden');
+            if (msg) document.getElementById('no-data-msg').textContent = msg;
+        }
+
+        // ---- ARRANQUE ----
+        // 1) cache del dispositivo (instantáneo)  2) products.json  3) pedir el Excel
+        window.addEventListener('DOMContentLoaded', () => {
+            boot().catch(err => {
+                console.error('Fallo el arranque:', err);
+                showNoData('No se pudo cargar el catálogo. Arrastre el Excel.');
+            });
+            // Nunca dejar la pantalla de carga indefinidamente.
+            setTimeout(() => {
+                const cargando = document.getElementById('upload-prompt');
+                if (!cargando.classList.contains('hidden')) {
+                    showNoData('Arrastre el Excel del catálogo para cargarlo en este dispositivo.');
+                }
+            }, 45000);
+        });
+
+        async function boot() {
+            try {
+                const cached = await withTimeout(idbGet(CATALOG_KEY), 4000, 'cache local');
+                if (cached && cached.productos && cached.productos.length) {
+                    setCatalog(cached.productos, cached.metadata, cached.tiendas);
+                    return;
+                }
+            } catch (e) {
+                console.warn('Cache no disponible:', e);
+            }
+
+            // Con file:// el fetch falla por CORS. Antes eso dejaba la pantalla
+            // "Cargando..." para siempre; ahora se ofrece cargar el Excel.
+            if (location.protocol === 'file:') {
+                showNoData('Arrastre el Excel del catálogo para cargarlo en este dispositivo.');
+                return;
+            }
+
+            try {
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), 30000);
+                const res = await fetch('products.json', { signal: ctrl.signal });
+                clearTimeout(timer);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+
+                const data = await res.json();
+                const productos = Object.values(data.productos || {});
+                if (!productos.length) throw new Error('JSON sin productos');
+
+                setCatalog(productos, data.metadata, data.tiendas);
+                idbSet(CATALOG_KEY, { productos, metadata: data.metadata, tiendas: data.tiendas })
+                    .catch(e => console.warn('No se pudo cachear:', e));
+                showToastSync('Base de datos cargada',
+                    productos.length.toLocaleString('es-CR') + ' registros guardados en este dispositivo');
+            } catch (err) {
+                console.warn('No se pudo cargar products.json:', err);
+                showNoData('No se pudo descargar el catálogo. Arrastre el Excel para cargarlo.');
+            }
+        }
+
+        // ---- IMPORTAR EXCEL (arrastrar o seleccionar) ----
+        const COLUMN_MAPPINGS = {
+            sku: ['CODIGO SKU', 'CÓDIGO SKU', 'SKU'],
+            idInterno: ['ID INTERNO'],
+            descripcion: ['DESCRIPCION', 'DESCRIPCIÓN', 'PRODUCTO', 'NOMBRE'],
+            precio: ['PRECIO FINAL', 'PRECIO', 'VALOR'],
+            tipo: ['TIPO'],
+            estatus: ['ESTATUS', 'STATUS', 'ESTADO'],
+            existencia: ['EXISTENCIA', 'STOCK'],
+            upc: ['CODIGO UPC', 'UPC', 'CODIGO BARRAS', 'CODIGO_BARRAS'],
+            as400: ['AS 400', 'AS400'],
+            numParte: ['NUMERO DE PARTE', 'NUM PARTE'],
+            tienda: ['UNIDAD DE NEGOCIO DEL INVENTARIO', 'UNIDAD DE NEGOCIO', 'TIENDA', 'UBICACION'],
+        };
+
+        function buildHeaderIndex(headers) {
+            const index = {};
+            for (const [field, aliases] of Object.entries(COLUMN_MAPPINGS)) {
+                for (const alias of aliases) {
+                    const found = headers.find(h => h.toUpperCase().trim() === alias)
+                        || headers.find(h => h.toUpperCase().includes(alias));
+                    if (found) { index[field] = found; break; }
+                }
+            }
+            return index;
+        }
+
+        // "OD | CR | 623 TIENDA URUCA" -> { codigo: '623', nombre: 'URUCA' }
+        function parseTienda(raw) {
+            let s = String(raw || '').trim();
+            if (!s) return null;
+            const partes = s.split('|');
+            s = partes[partes.length - 1].trim();
+
+            const m = s.match(/^(\d+)\s+(.*)$/);
+            let codigo = '', nombre = s;
+            if (m) { codigo = m[1]; nombre = m[2].trim(); }
+
+            nombre = nombre.replace(/^TIENDA\s+/i, '').trim();
+            return { codigo, nombre: nombre || s };
+        }
+
+        // Misma lógica que convert-excel-to-json.js, ejecutada en el dispositivo.
+        function parseWorkbook(arrayBuffer) {
+            const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+            if (!rows.length) throw new Error('la hoja está vacía');
+
+            const H = buildHeaderIndex(Object.keys(rows[0]));
+            if (!H.sku || !H.descripcion) throw new Error('faltan las columnas CODIGO SKU / DESCRIPCION');
+
+            const val = (row, f) => (H[f] === undefined ? '' : row[H[f]]);
+            const str = (v) => (v === undefined || v === null ? '' : String(v).trim());
+
+            const map = new Map();
+            const seenUpc = new Map();
+            const existPorSku = new Map();
+            const tiendas = {};
+
+            for (const row of rows) {
+                const sku = str(val(row, 'sku'));
+                const desc = str(val(row, 'descripcion'));
+                if (!sku || !desc) continue;
+
+                let p = map.get(sku);
+                if (!p) {
+                    const precio = parseFloat(val(row, 'precio'));
+                    p = {
+                        sku,
+                        idInterno: str(val(row, 'idInterno')),
+                        descripcion: desc,
+                        precio: isNaN(precio) ? 0 : precio,
+                        tipo: str(val(row, 'tipo')),
+                        estatus: str(val(row, 'estatus')),
+                        as400: str(val(row, 'as400')),
+                        numParte: str(val(row, 'numParte')),
+                        codigos_barras: [],
+                        existencias: [],
+                        existenciaTotal: 0,
+                    };
+                    map.set(sku, p);
+                    seenUpc.set(sku, new Set());
+                    existPorSku.set(sku, new Map());
+                }
+
+                const upc = str(val(row, 'upc'));
+                if (upc) {
+                    const set = seenUpc.get(sku);
+                    if (!set.has(upc)) { set.add(upc); p.codigos_barras.push(upc); }
+                }
+
+                const cant = parseFloat(val(row, 'existencia'));
+                const t = parseTienda(val(row, 'tienda'));
+                if (t && t.codigo) {
+                    if (!tiendas[t.codigo]) tiendas[t.codigo] = t.nombre;
+                    if (!isNaN(cant) && cant !== 0) {
+                        const acc = existPorSku.get(sku);
+                        acc.set(t.codigo, (acc.get(t.codigo) || 0) + cant);
+                    }
+                }
+            }
+
+            for (const [sku, acc] of existPorSku) {
+                const p = map.get(sku);
+                p.existencias = Array.from(acc.entries())
+                    .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+                p.existenciaTotal = p.existencias.reduce((s, e) => s + e[1], 0);
+            }
+
+            const productos = Array.from(map.values());
+            return {
+                productos,
+                tiendas,
+                metadata: {
+                    generado: new Date().toISOString(),
+                    total_productos: productos.length,
+                    total_codigos_barras: productos.reduce((s, p) => s + p.codigos_barras.length, 0),
+                    total_tiendas: Object.keys(tiendas).length,
+                    version: '3.0',
+                }
+            };
+        }
+
+        function importExcelFile(file) {
+            if (!file) return;
+            if (!/\.(xls|xlsx)$/i.test(file.name)) { showToast('Debe ser un archivo .xls o .xlsx'); return; }
+            if (typeof XLSX === 'undefined') { showToast('Librería de Excel no disponible'); return; }
+
+            document.getElementById('upload-prompt').classList.add('hidden');
+            document.getElementById('import-progress').classList.remove('hidden');
+
+            const reader = new FileReader();
+            reader.onerror = () => {
+                document.getElementById('import-progress').classList.add('hidden');
+                showToast('No se pudo leer el archivo');
+            };
+            reader.onload = async function (e) {
+                try {
+                    const { productos, metadata, tiendas } = parseWorkbook(e.target.result);
+                    metadata.origen = file.name;
+                    setCatalog(productos, metadata, tiendas);
 
                     try {
-                        localStorage.setItem('inventoryData', JSON.stringify(excelData));
-                        showToast('Datos guardados - ' + excelData.length + ' registros únicos');
-                    } catch (e) {
-                        showToast('Catálogo muy grande para guardar offline');
+                        await withTimeout(idbSet(CATALOG_KEY, { productos, metadata, tiendas }), 60000, 'guardar cache');
+                        showToastSync('Base de datos lista',
+                            productos.length.toLocaleString('es-CR') + ' productos guardados en este dispositivo');
+                    } catch (err) {
+                        console.warn('No se pudo guardar en cache:', err);
+                        showToastSync('Base de datos cargada', 'No se pudo guardar en cache: se perderá al cerrar');
                     }
-
-                    document.getElementById('upload-prompt').classList.add('hidden');
-                    document.getElementById('data-loaded').classList.remove('hidden');
-                    document.getElementById('record-count').textContent = excelData.length + ' registros';
 
                     document.getElementById('search-input').value = '';
                     showNoResult();
-
                 } catch (err) {
-                    showToast('Error al leer el archivo');
+                    console.error(err);
+                    showToast('Error al convertir el Excel: ' + err.message);
+                    if (!excelData.length) showNoData('No se pudo leer ese Excel. Intente con otro archivo.');
+                } finally {
+                    document.getElementById('import-progress').classList.add('hidden');
+                    closeExcelModal();
                 }
             };
             reader.readAsArrayBuffer(file);
         }
+
+        function handleExcelUpload(event) {
+            importExcelFile(event.target.files[0]);
+            event.target.value = '';
+        }
+
+        // Arrastrar el Excel sobre cualquier parte de la ventana
+        (function enableDragAndDrop() {
+            const overlay = document.getElementById('drop-overlay');
+            let depth = 0;
+            window.addEventListener('dragenter', (e) => {
+                e.preventDefault(); depth++; overlay.classList.remove('hidden');
+            });
+            window.addEventListener('dragover', (e) => e.preventDefault());
+            window.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                if (--depth <= 0) { depth = 0; overlay.classList.add('hidden'); }
+            });
+            window.addEventListener('drop', (e) => {
+                e.preventDefault();
+                depth = 0;
+                overlay.classList.add('hidden');
+                if (e.dataTransfer.files && e.dataTransfer.files.length) importExcelFile(e.dataTransfer.files[0]);
+            });
+        })();
 
         // ---- SCANNER ----
         function startScanner() {
@@ -521,43 +747,43 @@
         }
 
         // ---- SEARCH ----
+        // Los índices resuelven SKU y UPC en O(1); solo la descripción recorre el arreglo.
         function executeSearch() {
             const query = document.getElementById('search-input').value.trim();
             if (!query) return;
-            if (excelData.length === 0) { showToast('Primero cargue un archivo Excel'); return; }
+            if (excelData.length === 0) { showToast('Primero cargue la base de datos'); return; }
+
+            let matchedUpc = scannedUpc || null;
+            scannedUpc = null;
+
+            const porSku = skuIndex.get(query);
+            if (porSku) { showSingleResult(porSku, matchedUpc); return; }
+
+            const porUpc = upcIndex.get(normUpc(query));
+            if (porUpc && porUpc.length) {
+                if (!matchedUpc) {
+                    const item = porUpc[0];
+                    matchedUpc = (item.codigos_barras || []).find(u => normUpc(u) === normUpc(query)) || query;
+                }
+                if (porUpc.length === 1) showSingleResult(porUpc[0], matchedUpc);
+                else showMultipleResults(porUpc);
+                return;
+            }
 
             const q = query.toUpperCase();
-            const qNorm = query.replace(/^0+/, '');
-            let matchedUpc = scannedUpc || null;
-
-            const results = excelData.filter(item => {
-                // Buscar en SKU
-                if (item.sku === query) return true;
-
-                // Buscar en todos los códigos de barras y guardar el que coincidió
-                if (Array.isArray(item.codigos_barras)) {
-                    for (const upc of item.codigos_barras) {
-                        const upcNorm = (upc || '').replace(/^0+/, '');
-                        if (upcNorm === qNorm || upc === query) {
-                            if (!matchedUpc) matchedUpc = upc;
-                            return true;
-                        }
-                    }
+            const results = [];
+            for (const item of excelData) {
+                if ((item.descripcion || '').toUpperCase().includes(q)) {
+                    results.push(item);
+                    if (results.length >= 300) break;   // evita listas gigantes en móvil
                 }
-
-                // Buscar en descripción
-                if ((item.descripcion || '').toUpperCase().includes(q)) return true;
-
-                return false;
-            });
-
-            scannedUpc = null; // Limpiar después de usar
+            }
 
             if (results.length === 0) {
                 showToast('No se encontraron resultados');
                 showNoResult();
             } else if (results.length === 1) {
-                showSingleResult(results[0], matchedUpc);
+                showSingleResult(results[0], null);
             } else {
                 showMultipleResults(results);
             }
@@ -626,14 +852,10 @@
                 div.appendChild(label);
 
                 let valDiv = document.createElement('div');
-                valDiv.className = 'w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300';
+                valDiv.className = 'w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300 break-words';
 
                 if (field.key === 'upc') {
-                    // Mostrar solo el UPC que coincidió en la búsqueda
-                    valDiv.textContent = matchedUpc || item.upc || '—';
-                } else if (field.key === 'existencia') {
-                    // Mostrar existencia del producto
-                    valDiv.textContent = item.existencia || '—';
+                    valDiv.textContent = matchedUpc || (item.codigos_barras || [])[0] || item.upc || '—';
                 } else if (field.isCurrency) {
                     const num = parseFloat(item[field.key]);
                     valDiv.textContent = !isNaN(num)
@@ -652,8 +874,100 @@
                     contentContainer.appendChild(hr);
                 }
             });
+
+            contentContainer.appendChild(buildExistenciasSection(item));
         }
 
+        // ---- EXISTENCIAS POR TIENDA ----
+        // Las tiendas de venta son los códigos de 3 dígitos (620-627); los códigos
+        // 10xxx/80xxx/90xxx son bodega, reparación y mercancía dañada.
+        const esTiendaVenta = (codigo) => /^\d{3}$/.test(codigo);
+
+        function nombreTienda(codigo) {
+            return tiendasCatalogo[codigo] || 'Tienda ' + codigo;
+        }
+
+        function filaTienda(codigo, cantidad, destacada) {
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between px-3 py-2 border-b last:border-0 border-gray-200 dark:border-gray-700';
+
+            const left = document.createElement('div');
+            left.className = 'flex items-center min-w-0 gap-2';
+
+            const code = document.createElement('span');
+            code.className = 'shrink-0 text-[11px] font-bold px-1.5 py-0.5 rounded ' + (destacada
+                ? 'bg-primary text-white'
+                : 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200');
+            code.textContent = codigo;
+            left.appendChild(code);
+
+            const name = document.createElement('span');
+            name.className = 'text-sm text-gray-700 dark:text-gray-300 truncate';
+            name.textContent = nombreTienda(codigo);
+            left.appendChild(name);
+
+            const qty = document.createElement('span');
+            qty.className = 'shrink-0 ml-2 text-sm font-bold ' + (cantidad > 0
+                ? 'text-gray-800 dark:text-gray-100'
+                : 'text-gray-400 dark:text-gray-500');
+            qty.textContent = cantidad.toLocaleString('es-CR');
+
+            row.appendChild(left);
+            row.appendChild(qty);
+            return row;
+        }
+
+        function buildExistenciasSection(item) {
+            const wrap = document.createElement('div');
+            wrap.className = 'space-y-1 pt-2';
+
+            const existencias = Array.isArray(item.existencias) ? item.existencias : [];
+            const total = typeof item.existenciaTotal === 'number'
+                ? item.existenciaTotal
+                : existencias.reduce((s, e) => s + e[1], 0);
+
+            const header = document.createElement('div');
+            header.className = 'flex items-center justify-between';
+            header.innerHTML =
+                '<label class="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold tracking-wider">Existencia por tienda</label>' +
+                '<span class="text-xs font-bold text-primary dark:text-blue-400">Total: ' +
+                total.toLocaleString('es-CR') + '</span>';
+            wrap.appendChild(header);
+
+            const box = document.createElement('div');
+            box.className = 'bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded overflow-hidden';
+
+            if (!existencias.length) {
+                box.innerHTML = '<div class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400 text-center">Sin existencias registradas</div>';
+                wrap.appendChild(box);
+                return wrap;
+            }
+
+            const tiendas = existencias.filter(e => esTiendaVenta(e[0]));
+            const otras = existencias.filter(e => !esTiendaVenta(e[0]));
+
+            tiendas.forEach(([codigo, cantidad]) => box.appendChild(filaTienda(codigo, cantidad, true)));
+
+            if (otras.length) {
+                const details = document.createElement('details');
+                details.className = 'border-t border-gray-300 dark:border-gray-600';
+
+                const summary = document.createElement('summary');
+                summary.className = 'px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 cursor-pointer select-none hover:text-primary';
+                summary.textContent = 'Otras ubicaciones (' + otras.length + ')';
+                details.appendChild(summary);
+
+                const inner = document.createElement('div');
+                inner.className = 'border-t border-gray-200 dark:border-gray-700';
+                otras.forEach(([codigo, cantidad]) => inner.appendChild(filaTienda(codigo, cantidad, false)));
+                details.appendChild(inner);
+
+                box.appendChild(details);
+            }
+
+            wrap.appendChild(box);
+            return wrap;
+        }
 
         // ---- TOAST ----
         function showToast(msg) {
@@ -674,161 +988,46 @@
             setTimeout(() => toast.classList.add('hidden'), 5000);
         }
 
-        // ---- MANUAL EXCEL CONVERSION ----
-        let convertedData = null;
-
+        // ---- MODAL DE CARGA MANUAL ----
         function closeExcelModal() {
             document.getElementById('excel-modal').classList.add('hidden');
-            document.getElementById('conversion-result').classList.add('hidden');
-            document.getElementById('conversion-progress').classList.add('hidden');
             document.getElementById('manual-excel-input').value = '';
         }
 
         function handleManualExcelUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            document.getElementById('conversion-progress').classList.remove('hidden');
-            document.getElementById('conversion-result').classList.add('hidden');
-
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const wb = XLSX.read(data, { type: 'array' });
-                    const ws = wb.Sheets[wb.SheetNames[0]];
-                    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-
-                    const COLUMN_MAPPINGS = {
-                        sku: ['CODIGO SKU', 'SKU', 'CÓDIGO SKU', 'codigo'],
-                        idInterno: ['ID INTERNO', 'ID', 'INTERNO'],
-                        descripcion: ['DESCRIPCION', 'DESCRIPCION PRODUCTO', 'PRODUCTO', 'NOMBRE'],
-                        precio: ['PRECIO FINAL', 'PRECIO', 'VALOR'],
-                        categoria: ['CATEGORIA', 'CATEGORIA PRODUCTO'],
-                        tipo: ['TIPO', 'TIPO PRODUCTO'],
-                        estatus: ['ESTATUS', 'STATUS', 'ESTADO'],
-                        existencia: ['EXISTENCIA', 'STOCK', 'STOCK_ACTUAL'],
-                        upc: ['UPC', 'CODIGO BARRAS', 'BARRAS', 'CODIGO_BARRAS', 'CODIGO UPC'],
-                        cantidad: ['CANTIDAD', 'CANT', 'STOCK', 'EXISTENCIA'],
-                        as400: ['AS 400', 'AS400', 'CODIGO AS400'],
-                        numParte: ['NUMERO DE PARTE', 'NUM PARTE', 'PARTE'],
-                    };
-
-                    function findColumn(row, aliases) {
-                        for (const alias of aliases) {
-                            for (const key of Object.keys(row)) {
-                                if (key.toUpperCase().includes(alias.toUpperCase())) {
-                                    return row[key];
-                                }
-                            }
-                        }
-                        return undefined;
-                    }
-
-                    const products = {};
-                    rows.forEach((row) => {
-                        const sku = findColumn(row, COLUMN_MAPPINGS.sku);
-                        const desc = findColumn(row, COLUMN_MAPPINGS.descripcion);
-                        const precio = findColumn(row, COLUMN_MAPPINGS.precio);
-                        const categoria = findColumn(row, COLUMN_MAPPINGS.categoria);
-                        const tipo = findColumn(row, COLUMN_MAPPINGS.tipo);
-                        const estatus = findColumn(row, COLUMN_MAPPINGS.estatus);
-                        const existencia = findColumn(row, COLUMN_MAPPINGS.existencia);
-                        const upc = findColumn(row, COLUMN_MAPPINGS.upc);
-                        const cantidad = findColumn(row, COLUMN_MAPPINGS.cantidad);
-                        const as400 = findColumn(row, COLUMN_MAPPINGS.as400);
-                        const numParte = findColumn(row, COLUMN_MAPPINGS.numParte);
-                        const idInterno = findColumn(row, COLUMN_MAPPINGS.idInterno);
-
-                        if (!sku || !desc) return;
-
-                        const skuStr = sku.toString().trim();
-                        if (!products[skuStr]) {
-                            products[skuStr] = {
-                                sku: skuStr,
-                                idInterno: idInterno ? idInterno.toString().trim() : '',
-                                descripcion: desc.toString().trim(),
-                                precio: precio ? parseFloat(precio) : 0,
-                                categoria: categoria ? categoria.toString().trim() : '',
-                                tipo: tipo ? tipo.toString().trim() : '',
-                                estatus: estatus ? estatus.toString().trim() : '',
-                                existencia: existencia ? existencia.toString().trim() : '',
-                                as400: as400 ? as400.toString().trim() : '',
-                                numParte: numParte ? numParte.toString().trim() : '',
-                                codigos_barras: [],
-                                cantidades: []
-                            };
-                        }
-
-                        if (upc) {
-                            const upcStr = upc.toString().trim();
-                            if (!products[skuStr].codigos_barras.includes(upcStr)) {
-                                products[skuStr].codigos_barras.push(upcStr);
-                            }
-                        }
-
-                        if (cantidad) {
-                            const cantNum = parseInt(cantidad);
-                            if (!isNaN(cantNum) && cantNum > 0) {
-                                products[skuStr].cantidades.push(cantNum);
-                            }
-                        }
-                    });
-
-                    convertedData = {
-                        metadata: {
-                            generado: new Date().toISOString(),
-                            total_productos: Object.keys(products).length,
-                            total_codigos_barras: Object.values(products).reduce((sum, p) => sum + p.codigos_barras.length, 0),
-                            versión: '1.0'
-                        },
-                        productos: products
-                    };
-
-                    document.getElementById('conversion-progress').classList.add('hidden');
-                    document.getElementById('conversion-result').classList.remove('hidden');
-                    document.getElementById('result-count').textContent =
-                        `${Object.keys(products).length} productos convertidos`;
-
-                } catch (err) {
-                    console.error('Error:', err);
-                    showToast('Error al convertir Excel');
-                    closeExcelModal();
-                }
-            };
-            reader.readAsArrayBuffer(file);
+            importExcelFile(event.target.files[0]);
+            event.target.value = '';
         }
 
-        function useConvertedData() {
-            if (!convertedData) return;
-            excelData = Object.entries(convertedData.productos).map(([sku, product]) => ({
-                sku: sku,
-                ...product
-            }));
-
-            localStorage.setItem('inventoryData', JSON.stringify(excelData));
-            document.getElementById('upload-prompt').classList.add('hidden');
-            document.getElementById('data-loaded').classList.remove('hidden');
-            document.getElementById('record-count').textContent = excelData.length + ' registros';
-
-            const now = new Date();
-            const date = now.toLocaleDateString('es-CR');
-            const time = now.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
-            showToastSync('Base de datos cargada', 'Fecha: ' + date + ' - ' + time + '\nRegistros: ' + excelData.length + ' (sin duplicados)');
-
-            closeExcelModal();
-        }
-
+        // Exporta el catálogo activo como products.json (para publicarlo en el servidor).
         function downloadConvertedJson() {
-            if (!convertedData) return;
-            const jsonStr = JSON.stringify(convertedData, null, 2);
-            const blob = new Blob([jsonStr], { type: 'application/json' });
+            if (!excelData.length) { showToast('No hay base de datos cargada'); return; }
+            const productos = {};
+            for (const p of excelData) productos[p.sku] = p;
+            const payload = {
+                metadata: {
+                    generado: new Date().toISOString(),
+                    total_productos: excelData.length,
+                    total_codigos_barras: excelData.reduce((s, p) => s + (p.codigos_barras || []).length, 0),
+                    total_tiendas: Object.keys(tiendasCatalogo).length,
+                    version: '3.0',
+                },
+                tiendas: tiendasCatalogo,
+                productos,
+            };
+            const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'products-' + new Date().toISOString().split('T')[0] + '.json';
+            a.download = 'products.json';
             a.click();
             URL.revokeObjectURL(url);
+        }
+
+        // Borra el catálogo guardado en este dispositivo y recarga.
+        async function clearCatalogCache() {
+            try { await idbSet(CATALOG_KEY, null); } catch (e) { console.warn(e); }
+            location.reload();
         }
     </script>
 
