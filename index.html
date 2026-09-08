@@ -1044,58 +1044,15 @@
         }
 
         // ---- PUBLICAR A TODOS ----
-        // Sube products.json y sync-info.json al repositorio con la API de GitHub.
-        // Desde ahi GitHub Pages los sirve y cada dispositivo los toma solo al abrir.
-        const REPO = 'aquilesbaeza/scan';
-        const RAMA = 'main';
-        const TOKEN_KEY = 'githubToken';
-
-        // Token compartido: cualquier dispositivo puede publicar sin configurar nada.
-        // Va en el codigo que sirve GitHub Pages, asi que es visible para quien abra
-        // la app. Esta limitado a Contents de este repositorio: lo peor que permite es
-        // alterar este catalogo, y el historial de git deja revertirlo.
-        // Para cambiarlo: generar otro en github.com/settings/tokens y reemplazar aqui.
-        const TOKEN_FIJO = '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';
-
-        const obtenerToken = () => {
-            if (TOKEN_FIJO) return TOKEN_FIJO;
-            try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
-        };
-
-        function pedirToken() {
-            const token = prompt(
-                'Token de GitHub para publicar (se guarda solo en este dispositivo).\n\n' +
-                'Crear en: github.com/settings/tokens → Fine-grained token\n' +
-                'Repositorio: ' + REPO + ' · Permiso: Contents = Read and write'
-            );
-            if (!token) return '';
-            const limpio = token.trim();
-            try { localStorage.setItem(TOKEN_KEY, limpio); } catch (e) { console.warn(e); }
-            return limpio;
-        }
+        // La app no lleva ningun token: GitHub revoca cualquier token que aparezca en
+        // un repositorio publico. En su lugar habla con un Worker de Cloudflare que
+        // guarda el token del lado del servidor (ver worker/README.md), y el Worker
+        // hace el commit. Asi cualquier dispositivo publica sin configurar nada.
+        const WORKER_URL = 'https://scan-publicar.workers.dev';
+        const CLAVE_PUBLICACION = 'tiendas2026';
 
         function estadoPublicacion(texto) {
             document.getElementById('publicar-estado').textContent = texto || '';
-        }
-
-        async function api(ruta, token, opciones = {}) {
-            const res = await fetch('https://api.github.com/repos/' + REPO + ruta, {
-                ...opciones,
-                headers: {
-                    'Authorization': 'Bearer ' + token,
-                    'Accept': 'application/vnd.github+json',
-                    'Content-Type': 'application/json',
-                    ...(opciones.headers || {}),
-                },
-            });
-            if (!res.ok) {
-                const detalle = await res.text();
-                if (res.status === 401 || res.status === 403) {
-                    throw new Error('El token no tiene permiso para escribir en ' + REPO);
-                }
-                throw new Error('GitHub respondió ' + res.status + ': ' + detalle.slice(0, 200));
-            }
-            return res.json();
         }
 
         // btoa no acepta caracteres fuera de latin1 (las descripciones traen ñ y tildes),
@@ -1138,25 +1095,6 @@
         async function publicarATodos() {
             if (!excelData.length) { showToast('Primero cargue la base de datos'); return; }
 
-            let token = obtenerToken();
-            if (!token) {
-                token = pedirToken();
-                if (!token) return;
-                // Se comprueba de una vez, para no descubrir a mitad de la subida
-                // que el token no sirve.
-                estadoPublicacion('Comprobando el token...');
-                try {
-                    const repo = await api('', token);
-                    if (!repo.permissions || !repo.permissions.push) {
-                        throw new Error('El token no tiene permiso de escritura (Contents: Read and write)');
-                    }
-                } catch (err) {
-                    estadoPublicacion(err.message);
-                    try { localStorage.removeItem(TOKEN_KEY); } catch (e) { }
-                    return;
-                }
-            }
-
             const boton = document.getElementById('btn-publicar');
             boton.disabled = true;
             boton.classList.add('opacity-60');
@@ -1165,44 +1103,23 @@
                 estadoPublicacion('Preparando el catálogo...');
                 const { products, sync } = catalogoParaPublicar();
 
-                // Se usa la Git Data API en vez de la de contenidos: publica los dos
-                // archivos en un solo commit y admite products.json de varios MB.
-                estadoPublicacion('Conectando con GitHub...');
-                const ref = await api('/git/ref/heads/' + RAMA, token);
-                const commitPadre = await api('/git/commits/' + ref.object.sha, token);
+                // El base64 se hace aqui y no en el Worker: son unos 40 ms en el
+                // dispositivo, y le ahorra al Worker el limite de CPU del plan gratuito.
+                const cuerpo = JSON.stringify({
+                    productos: aBase64(products),
+                    sync: aBase64(sync),
+                    total: excelData.length,
+                });
 
-                estadoPublicacion('Subiendo el catálogo...');
-                const cuerpo = (contenido) => JSON.stringify({ content: aBase64(contenido), encoding: 'base64' });
-                const blobProducts = await api('/git/blobs', token, { method: 'POST', body: cuerpo(products) });
-                const blobSync = await api('/git/blobs', token, { method: 'POST', body: cuerpo(sync) });
-
-                const arbol = await api('/git/trees', token, {
+                estadoPublicacion('Publicando para todas las tiendas...');
+                const res = await fetch(WORKER_URL, {
                     method: 'POST',
-                    body: JSON.stringify({
-                        base_tree: commitPadre.tree.sha,
-                        tree: [
-                            { path: 'products.json', mode: '100644', type: 'blob', sha: blobProducts.sha },
-                            { path: 'sync-info.json', mode: '100644', type: 'blob', sha: blobSync.sha },
-                        ],
-                    }),
+                    headers: { 'Content-Type': 'application/json', 'X-Clave': CLAVE_PUBLICACION },
+                    body: cuerpo,
                 });
 
-                const fecha = new Date().toLocaleDateString('es-CR');
-                const commit = await api('/git/commits', token, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        message: 'data: Catalogo actualizado desde la app (' + fecha + ') - '
-                            + excelData.length + ' productos',
-                        tree: arbol.sha,
-                        parents: [ref.object.sha],
-                    }),
-                });
-
-                estadoPublicacion('Publicando...');
-                await api('/git/refs/heads/' + RAMA, token, {
-                    method: 'PATCH',
-                    body: JSON.stringify({ sha: commit.sha }),
-                });
+                const datos = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(datos.error || 'El servidor respondió ' + res.status);
 
                 estadoPublicacion('');
                 showToastSync('Publicado para todos',
@@ -1210,11 +1127,11 @@
                 closeExcelModal();
             } catch (err) {
                 console.error(err);
-                estadoPublicacion(err.message);
-                // Un token rechazado se descarta para poder escribir otro.
-                if (/permiso|401|403/i.test(err.message)) {
-                    try { localStorage.removeItem(TOKEN_KEY); } catch (e) { }
-                }
+                estadoPublicacion(
+                    err.message === 'Failed to fetch'
+                        ? 'No se pudo contactar el servidor de publicación. Revise la conexión.'
+                        : err.message
+                );
             } finally {
                 boton.disabled = false;
                 boton.classList.remove('opacity-60');
