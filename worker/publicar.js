@@ -52,7 +52,15 @@ export default {
         if (request.method !== 'POST') {
             return responder({ error: 'Solo se admite POST' }, 405);
         }
-        if (request.headers.get('X-Clave') !== env.CLAVE) {
+        // Se recorta el espacio en blanco: al pegar los secretos en el panel es
+        // facil que se cuele un salto de linea al final.
+        const claveEsperada = (env.CLAVE || '').trim();
+        const claveRecibida = (request.headers.get('X-Clave') || '').trim();
+
+        if (!claveEsperada) {
+            return responder({ error: 'Falta configurar CLAVE en el Worker' }, 500);
+        }
+        if (claveRecibida !== claveEsperada) {
             return responder({ error: 'Clave de publicación incorrecta' }, 401);
         }
         if (!env.GITHUB_TOKEN) {
