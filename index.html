@@ -330,11 +330,16 @@
         let scannerRunning = false;
         let scannedUpc = null;
 
-        const DISPLAY_FIELDS = [
+        // Lo que se lee de un vistazo va arriba; las existencias por tienda quedan
+        // en medio y el detalle del articulo debajo.
+        const CAMPOS_ARRIBA = [
             { key: 'sku', label: 'Código SKU' },
             { key: 'descripcion', label: 'Descripción' },
-            { key: 'upc', label: 'Código UPC' },
             { key: 'precio', label: 'Precio Final', isCurrency: true },
+        ];
+
+        const CAMPOS_ABAJO = [
+            { key: 'upc', label: 'Código UPC' },
             { key: 'tipo', label: 'Tipo' },
             { key: 'estatus', label: 'Estatus' },
         ];
@@ -856,7 +861,7 @@
                 document.getElementById('search-input').select();
             }, 300);
 
-            DISPLAY_FIELDS.forEach((field) => {
+            const pintarCampo = (field) => {
                 const div = document.createElement('div');
                 div.className = 'space-y-1';
 
@@ -881,15 +886,16 @@
 
                 div.appendChild(valDiv);
                 contentContainer.appendChild(div);
+            };
 
-                if (field.key === 'precio') {
-                    const hr = document.createElement('hr');
-                    hr.className = 'border-gray-200 dark:border-gray-700 my-2';
-                    contentContainer.appendChild(hr);
-                }
-            });
-
+            CAMPOS_ARRIBA.forEach(pintarCampo);
             contentContainer.appendChild(buildExistenciasSection(item));
+
+            const hr = document.createElement('hr');
+            hr.className = 'border-gray-200 dark:border-gray-700 my-2';
+            contentContainer.appendChild(hr);
+
+            CAMPOS_ABAJO.forEach(pintarCampo);
         }
 
         // ---- EXISTENCIAS POR TIENDA ----
