@@ -117,22 +117,6 @@
                         class="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Oracle</span>
                     <span class="text-xl font-bold text-gray-700 dark:text-gray-200 leading-none">NetSuite</span>
                 </div>
-                <div class="flex items-center space-x-4 text-gray-500 dark:text-gray-400">
-                    <button class="focus:outline-none" onclick="document.getElementById('excel-modal').classList.remove('hidden')"
-                        title="Convertir Excel manualmente">
-                        <span class="material-icons text-xl">upload_file</span>
-                    </button>
-                    <button class="focus:outline-none">
-                        <span class="material-icons text-xl">help_outline</span>
-                    </button>
-                    <div class="flex flex-col items-end text-xs leading-tight">
-                        <div class="flex items-center">
-                            <span class="material-icons text-base mr-1">business</span>
-                            <span class="font-semibold">621</span>
-                        </div>
-                        <span>San Pedro</span>
-                    </div>
-                </div>
             </div>
         </div>
         <div class="bg-primary text-white shadow-inner w-full">
@@ -197,8 +181,12 @@
                         <span class="material-icons text-sm">check_circle</span>
                         <span id="record-count">0 registros</span>
                     </div>
-                    <button onclick="document.getElementById('excel-input').click()"
-                        class="text-xs text-primary font-semibold">Cambiar</button>
+                    <button onclick="document.getElementById('excel-modal').classList.remove('hidden')"
+                        title="Cargar base de datos desde Excel"
+                        class="flex items-center gap-1 text-primary dark:text-blue-400 font-semibold text-xs hover:opacity-75 transition">
+                        <span class="material-icons text-base">cloud_upload</span>
+                        <span>Cargar BD</span>
+                    </button>
                 </div>
 
                 <!-- Search bar -->
