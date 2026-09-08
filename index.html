@@ -263,6 +263,14 @@
 
                 <input type="file" id="manual-excel-input" accept=".xls,.xlsx" class="hidden" onchange="handleManualExcelUpload(event)">
 
+                <button id="btn-publicar" onclick="publicarATodos()"
+                    class="w-full bg-primary hover:opacity-90 text-white px-3 py-2 rounded font-semibold text-sm transition flex items-center justify-center gap-2">
+                    <span class="material-icons text-base">publish</span>
+                    <span>Publicar a todos</span>
+                </button>
+
+                <p id="publicar-estado" class="text-xs text-center text-gray-500 dark:text-gray-400"></p>
+
                 <button onclick="downloadConvertedJson()" class="w-full bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 text-gray-800 dark:text-white px-3 py-2 rounded font-semibold text-sm transition">
                     Descargar products.json
                 </button>
@@ -694,13 +702,17 @@
 
                     document.getElementById('search-input').value = '';
                     showNoResult();
+
+                    // Queda a un toque de publicarlo para el resto de dispositivos.
+                    document.getElementById('excel-modal').classList.remove('hidden');
+                    estadoPublicacion('Cargado en este dispositivo. Publique para actualizar a los demás.');
                 } catch (err) {
                     console.error(err);
                     showToast('Error al convertir el Excel: ' + err.message);
                     if (!excelData.length) showNoData('No se pudo leer ese Excel. Intente con otro archivo.');
+                    closeExcelModal();
                 } finally {
                     document.getElementById('import-progress').classList.add('hidden');
-                    closeExcelModal();
                 }
             };
             reader.readAsArrayBuffer(file);
@@ -1023,11 +1035,166 @@
         function closeExcelModal() {
             document.getElementById('excel-modal').classList.add('hidden');
             document.getElementById('manual-excel-input').value = '';
+            estadoPublicacion('');
         }
 
         function handleManualExcelUpload(event) {
             importExcelFile(event.target.files[0]);
             event.target.value = '';
+        }
+
+        // ---- PUBLICAR A TODOS ----
+        // Sube products.json y sync-info.json al repositorio con la API de GitHub.
+        // Desde ahi GitHub Pages los sirve y cada dispositivo los toma solo al abrir.
+        const REPO = 'aquilesbaeza/scan';
+        const RAMA = 'main';
+        const TOKEN_KEY = 'githubToken';
+
+        const obtenerToken = () => {
+            try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
+        };
+
+        function pedirToken() {
+            const token = prompt(
+                'Token de GitHub para publicar (se guarda solo en este dispositivo).\n\n' +
+                'Crear en: github.com/settings/tokens → Fine-grained token\n' +
+                'Repositorio: ' + REPO + ' · Permiso: Contents = Read and write'
+            );
+            if (!token) return '';
+            const limpio = token.trim();
+            try { localStorage.setItem(TOKEN_KEY, limpio); } catch (e) { console.warn(e); }
+            return limpio;
+        }
+
+        function estadoPublicacion(texto) {
+            document.getElementById('publicar-estado').textContent = texto || '';
+        }
+
+        async function api(ruta, token, opciones = {}) {
+            const res = await fetch('https://api.github.com/repos/' + REPO + ruta, {
+                ...opciones,
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Accept': 'application/vnd.github+json',
+                    'Content-Type': 'application/json',
+                    ...(opciones.headers || {}),
+                },
+            });
+            if (!res.ok) {
+                const detalle = await res.text();
+                if (res.status === 401 || res.status === 403) {
+                    throw new Error('El token no tiene permiso para escribir en ' + REPO);
+                }
+                throw new Error('GitHub respondió ' + res.status + ': ' + detalle.slice(0, 200));
+            }
+            return res.json();
+        }
+
+        // btoa no acepta caracteres fuera de latin1 (las descripciones traen ñ y tildes),
+        // asi que se codifica a UTF-8 y se recorre por bloques para no reventar la pila.
+        function aBase64(texto) {
+            const bytes = new TextEncoder().encode(texto);
+            let binario = '';
+            const BLOQUE = 0x8000;
+            for (let i = 0; i < bytes.length; i += BLOQUE) {
+                binario += String.fromCharCode.apply(null, bytes.subarray(i, i + BLOQUE));
+            }
+            return btoa(binario);
+        }
+
+        function catalogoParaPublicar() {
+            const productos = {};
+            for (const p of excelData) productos[p.sku] = p;
+
+            const metadata = {
+                generado: new Date().toISOString(),
+                total_productos: excelData.length,
+                total_codigos_barras: excelData.reduce((s, p) => s + (p.codigos_barras || []).length, 0),
+                total_tiendas: Object.keys(tiendasCatalogo).length,
+                version: '3.0',
+            };
+
+            return {
+                products: JSON.stringify({ metadata, tiendas: tiendasCatalogo, productos }),
+                sync: JSON.stringify({
+                    timestamp: metadata.generado,
+                    total_productos: metadata.total_productos,
+                    total_codigos_barras: metadata.total_codigos_barras,
+                    total_tiendas: metadata.total_tiendas,
+                    version: '3.0',
+                    status: 'actualizado',
+                }, null, 2),
+            };
+        }
+
+        async function publicarATodos() {
+            if (!excelData.length) { showToast('Primero cargue la base de datos'); return; }
+
+            let token = obtenerToken() || pedirToken();
+            if (!token) return;
+
+            const boton = document.getElementById('btn-publicar');
+            boton.disabled = true;
+            boton.classList.add('opacity-60');
+
+            try {
+                estadoPublicacion('Preparando el catálogo...');
+                const { products, sync } = catalogoParaPublicar();
+
+                // Se usa la Git Data API en vez de la de contenidos: publica los dos
+                // archivos en un solo commit y admite products.json de varios MB.
+                estadoPublicacion('Conectando con GitHub...');
+                const ref = await api('/git/ref/heads/' + RAMA, token);
+                const commitPadre = await api('/git/commits/' + ref.object.sha, token);
+
+                estadoPublicacion('Subiendo el catálogo...');
+                const cuerpo = (contenido) => JSON.stringify({ content: aBase64(contenido), encoding: 'base64' });
+                const blobProducts = await api('/git/blobs', token, { method: 'POST', body: cuerpo(products) });
+                const blobSync = await api('/git/blobs', token, { method: 'POST', body: cuerpo(sync) });
+
+                const arbol = await api('/git/trees', token, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        base_tree: commitPadre.tree.sha,
+                        tree: [
+                            { path: 'products.json', mode: '100644', type: 'blob', sha: blobProducts.sha },
+                            { path: 'sync-info.json', mode: '100644', type: 'blob', sha: blobSync.sha },
+                        ],
+                    }),
+                });
+
+                const fecha = new Date().toLocaleDateString('es-CR');
+                const commit = await api('/git/commits', token, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        message: 'data: Catalogo actualizado desde la app (' + fecha + ') - '
+                            + excelData.length + ' productos',
+                        tree: arbol.sha,
+                        parents: [ref.object.sha],
+                    }),
+                });
+
+                estadoPublicacion('Publicando...');
+                await api('/git/refs/heads/' + RAMA, token, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ sha: commit.sha }),
+                });
+
+                estadoPublicacion('');
+                showToastSync('Publicado para todos',
+                    excelData.length.toLocaleString('es-CR') + ' productos • los demás dispositivos se actualizan al abrir');
+                closeExcelModal();
+            } catch (err) {
+                console.error(err);
+                estadoPublicacion(err.message);
+                // Un token rechazado se descarta para poder escribir otro.
+                if (/permiso|401|403/i.test(err.message)) {
+                    try { localStorage.removeItem(TOKEN_KEY); } catch (e) { }
+                }
+            } finally {
+                boton.disabled = false;
+                boton.classList.remove('opacity-60');
+            }
         }
 
         // Exporta el catálogo activo como products.json (para publicarlo en el servidor).
