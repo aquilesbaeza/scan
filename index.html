@@ -521,8 +521,9 @@
             return index;
         }
 
-        // Ubicaciones excluidas: 80xxx (mercancia en reparacion) y 90xxx (dañada).
-        const UBICACION_EXCLUIDA = /^(80|90)\d+$/;
+        // Solo tiendas de venta: los codigos de 3 digitos (620-627). Se descartan
+        // bodega externa (10xxx), mercancia en reparacion (80xxx) y dañada (90xxx).
+        const ES_TIENDA_VENTA = /^\d{3}$/;
 
         // "OD | CR | 623 TIENDA URUCA" -> { codigo: '623', nombre: 'URUCA' }
         function parseTienda(raw) {
@@ -591,7 +592,7 @@
 
                 const cant = parseFloat(val(row, 'existencia'));
                 const t = parseTienda(val(row, 'tienda'));
-                if (t && t.codigo && !UBICACION_EXCLUIDA.test(t.codigo)) {
+                if (t && t.codigo && ES_TIENDA_VENTA.test(t.codigo)) {
                     if (!tiendas[t.codigo]) tiendas[t.codigo] = t.nombre;
                     if (!isNaN(cant) && cant !== 0) {
                         const acc = existPorSku.get(sku);
@@ -882,15 +883,11 @@
         }
 
         // ---- EXISTENCIAS POR TIENDA ----
-        // Las tiendas de venta son los códigos de 3 dígitos (620-627); los códigos
-        // 10xxx/80xxx/90xxx son bodega, reparación y mercancía dañada.
-        const esTiendaVenta = (codigo) => /^\d{3}$/.test(codigo);
-
         function nombreTienda(codigo) {
             return tiendasCatalogo[codigo] || 'Tienda ' + codigo;
         }
 
-        function filaTienda(codigo, cantidad, destacada) {
+        function filaTienda(codigo, cantidad) {
             const row = document.createElement('div');
             row.className = 'flex items-center justify-between px-3 py-2 border-b last:border-0 border-gray-200 dark:border-gray-700';
 
@@ -898,9 +895,7 @@
             left.className = 'flex items-center min-w-0 gap-2';
 
             const code = document.createElement('span');
-            code.className = 'shrink-0 text-[11px] font-bold px-1.5 py-0.5 rounded ' + (destacada
-                ? 'bg-primary text-white'
-                : 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200');
+            code.className = 'shrink-0 text-[11px] font-bold px-1.5 py-0.5 rounded bg-primary text-white';
             code.textContent = codigo;
             left.appendChild(code);
 
@@ -924,8 +919,9 @@
             const wrap = document.createElement('div');
             wrap.className = 'space-y-1 pt-2';
 
+            // Se filtra tambien aqui por si el dispositivo tiene un catalogo viejo en cache.
             const existencias = (Array.isArray(item.existencias) ? item.existencias : [])
-                .filter(e => !UBICACION_EXCLUIDA.test(e[0]));
+                .filter(e => ES_TIENDA_VENTA.test(e[0]));
             const total = existencias.reduce((s, e) => s + e[1], 0);
 
             const header = document.createElement('div');
@@ -945,14 +941,10 @@
                 return wrap;
             }
 
-            // Una sola lista: tiendas de venta primero, luego bodega/reparacion/dañada.
-            const ordenadas = existencias
+            existencias
                 .slice()
-                .sort((a, b) => (esTiendaVenta(b[0]) - esTiendaVenta(a[0]))
-                    || a[0].localeCompare(b[0], undefined, { numeric: true }));
-
-            ordenadas.forEach(([codigo, cantidad]) =>
-                box.appendChild(filaTienda(codigo, cantidad, esTiendaVenta(codigo))));
+                .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
+                .forEach(([codigo, cantidad]) => box.appendChild(filaTienda(codigo, cantidad)));
 
             wrap.appendChild(box);
             return wrap;
