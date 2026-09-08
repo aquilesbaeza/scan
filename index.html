@@ -943,27 +943,14 @@
                 return wrap;
             }
 
-            const tiendas = existencias.filter(e => esTiendaVenta(e[0]));
-            const otras = existencias.filter(e => !esTiendaVenta(e[0]));
+            // Una sola lista: tiendas de venta primero, luego bodega/reparacion/dañada.
+            const ordenadas = existencias
+                .slice()
+                .sort((a, b) => (esTiendaVenta(b[0]) - esTiendaVenta(a[0]))
+                    || a[0].localeCompare(b[0], undefined, { numeric: true }));
 
-            tiendas.forEach(([codigo, cantidad]) => box.appendChild(filaTienda(codigo, cantidad, true)));
-
-            if (otras.length) {
-                const details = document.createElement('details');
-                details.className = 'border-t border-gray-300 dark:border-gray-600';
-
-                const summary = document.createElement('summary');
-                summary.className = 'px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 cursor-pointer select-none hover:text-primary';
-                summary.textContent = 'Otras ubicaciones (' + otras.length + ')';
-                details.appendChild(summary);
-
-                const inner = document.createElement('div');
-                inner.className = 'border-t border-gray-200 dark:border-gray-700';
-                otras.forEach(([codigo, cantidad]) => inner.appendChild(filaTienda(codigo, cantidad, false)));
-                details.appendChild(inner);
-
-                box.appendChild(details);
-            }
+            ordenadas.forEach(([codigo, cantidad]) =>
+                box.appendChild(filaTienda(codigo, cantidad, esTiendaVenta(codigo))));
 
             wrap.appendChild(box);
             return wrap;
