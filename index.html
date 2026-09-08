@@ -1050,7 +1050,15 @@
         const RAMA = 'main';
         const TOKEN_KEY = 'githubToken';
 
+        // Token compartido: cualquier dispositivo puede publicar sin configurar nada.
+        // Va en el codigo que sirve GitHub Pages, asi que es visible para quien abra
+        // la app. Esta limitado a Contents de este repositorio: lo peor que permite es
+        // alterar este catalogo, y el historial de git deja revertirlo.
+        // Para cambiarlo: generar otro en github.com/settings/tokens y reemplazar aqui.
+        const TOKEN_FIJO = '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';
+
         const obtenerToken = () => {
+            if (TOKEN_FIJO) return TOKEN_FIJO;
             try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
         };
 
