@@ -331,6 +331,8 @@
         }
 
         let excelData = [];
+        let metadataActual = null;     // metadata del catalogo que esta cargado ahora
+        let comprobandoSync = false;   // evita comprobaciones solapadas
         let tiendasCatalogo = {};      // codigo -> nombre
         let skuIndex = new Map();      // sku -> producto
         let upcIndex = new Map();      // upc normalizado -> [productos]
@@ -418,6 +420,7 @@
 
         function setCatalog(productos, metadata, tiendas) {
             excelData = productos;
+            metadataActual = metadata || null;
             tiendasCatalogo = tiendas || {};
             skuIndex = new Map();
             upcIndex = new Map();
@@ -475,6 +478,7 @@
                 console.error('Fallo el arranque:', err);
                 showNoData('No se pudo cargar el catálogo. Arrastre el Excel.');
             });
+            vigilarActualizaciones();
             // Nunca dejar la pantalla de carga indefinidamente.
             setTimeout(() => {
                 const cargando = document.getElementById('upload-prompt');
@@ -534,7 +538,13 @@
         // subir el Excel en un solo dispositivo actualiza a todos los demas.
         async function buscarActualizacion(metadataLocal) {
             if (location.protocol === 'file:') return;
+            if (comprobandoSync) return;              // ya hay una comprobacion en curso
+            if (metadataLocal === undefined) metadataLocal = metadataActual;
+            // Sin catalogo cargado todavia, de esto se encarga boot(): si no, el
+            // primer turno del intervalo se bajaria products.json por duplicado.
+            if (!metadataLocal) return;
 
+            comprobandoSync = true;
             try {
                 const res = await fetch('sync-info.json', { cache: 'no-store' });
                 if (!res.ok) return;
@@ -560,9 +570,41 @@
                 showToastSync('Base de datos actualizada',
                     productos.length.toLocaleString('es-CR') + ' productos • ' +
                     totalUnidades(productos).toLocaleString('es-CR') + ' unidades • ' + fecha + ' ' + hora);
+
+                // Si hay un producto en pantalla, sus cantidades acaban de quedar viejas:
+                // se vuelve a buscar lo mismo para que muestre las del catalogo nuevo.
+                const enPantalla = !document.getElementById('result-fields').classList.contains('hidden');
+                if (enPantalla && document.getElementById('search-input').value.trim()) {
+                    executeSearch();
+                }
             } catch (err) {
                 console.warn('No se pudo comprobar actualizaciones:', err);
+            } finally {
+                comprobandoSync = false;
             }
+        }
+
+        // ---- VIGILANCIA CONTINUA ----
+        // El inventario cambia todos los dias por ventas y traslados, y una tienda no
+        // puede quedar consultando cantidades viejas. Comprobar al arrancar no basta:
+        // el equipo de la caja queda con la app abierta toda la jornada. sync-info.json
+        // pesa unos cientos de bytes, asi que se consulta seguido sin costo real.
+        const INTERVALO_SYNC = 60000;   // 1 minuto
+
+        function vigilarActualizaciones() {
+            if (location.protocol === 'file:') return;
+
+            setInterval(() => {
+                if (document.visibilityState === 'visible') buscarActualizacion();
+            }, INTERVALO_SYNC);
+
+            // Al volver a la app o al recuperar la señal se comprueba de inmediato,
+            // sin esperar al siguiente turno del intervalo.
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') buscarActualizacion();
+            });
+            window.addEventListener('online', () => buscarActualizacion());
+            window.addEventListener('focus', () => buscarActualizacion());
         }
 
         // ---- IMPORTAR EXCEL (arrastrar o seleccionar) ----
