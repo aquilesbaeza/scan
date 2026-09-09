@@ -168,7 +168,7 @@
             <!-- Progreso de importacion -->
             <div id="import-progress" class="hidden px-6 py-4 flex items-center justify-center space-x-2">
                 <div class="animate-spin"><span class="material-icons text-primary">refresh</span></div>
-                <span class="text-sm text-gray-500">Convirtiendo Excel a JSON...</span>
+                <span id="import-progress-msg" class="text-sm text-gray-500">Convirtiendo Excel a JSON...</span>
             </div>
 
             <!-- Data loaded state -->
@@ -404,6 +404,18 @@
      // ---- ÍNDICES DE BÚSQUEDA ----
         const normUpc = (v) => String(v || '').trim().replace(/^0+/, '');
 
+        // Unidades reales del catalogo: suma las existencias de las tiendas de venta.
+        // Sirve para que los avisos digan cuanto inventario quedo cargado.
+        function totalUnidades(productos) {
+            let n = 0;
+            for (const p of productos || []) {
+                for (const [codigo, cantidad] of (p.existencias || [])) {
+                    if (ES_TIENDA_VENTA.test(codigo)) n += cantidad;
+                }
+            }
+            return n;
+        }
+
         function setCatalog(productos, metadata, tiendas) {
             excelData = productos;
             tiendasCatalogo = tiendas || {};
@@ -541,9 +553,13 @@
                 setCatalog(productos, data.metadata, data.tiendas);
                 await idbSet(CATALOG_KEY, { schema: CATALOG_SCHEMA, productos, metadata: data.metadata, tiendas: data.tiendas });
 
+                // El aviso lleva fecha, hora y unidades del catalogo publicado: asi se
+                // puede confirmar de un vistazo que dos dispositivos tienen lo mismo.
                 const fecha = publicado.toLocaleDateString('es-CR');
+                const hora = publicado.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
                 showToastSync('Base de datos actualizada',
-                    productos.length.toLocaleString('es-CR') + ' registros • ' + fecha);
+                    productos.length.toLocaleString('es-CR') + ' productos • ' +
+                    totalUnidades(productos).toLocaleString('es-CR') + ' unidades • ' + fecha + ' ' + hora);
             } catch (err) {
                 console.warn('No se pudo comprobar actualizaciones:', err);
             }
@@ -688,6 +704,8 @@
             if (typeof XLSX === 'undefined') { showToast('Librería de Excel no disponible'); return; }
 
             document.getElementById('upload-prompt').classList.add('hidden');
+            document.getElementById('import-progress-msg').textContent =
+                'Excel cargado: ' + file.name + ' — convirtiendo a JSON...';
             document.getElementById('import-progress').classList.remove('hidden');
 
             const reader = new FileReader();
@@ -703,8 +721,9 @@
 
                     try {
                         await withTimeout(idbSet(CATALOG_KEY, { schema: CATALOG_SCHEMA, productos, metadata, tiendas }), 60000, 'guardar cache');
-                        showToastSync('Base de datos lista',
-                            productos.length.toLocaleString('es-CR') + ' productos guardados en este dispositivo');
+                        showToastSync('Excel convertido a JSON',
+                            productos.length.toLocaleString('es-CR') + ' productos • ' +
+                            totalUnidades(productos).toLocaleString('es-CR') + ' unidades • guardado en este dispositivo');
                     } catch (err) {
                         console.warn('No se pudo guardar en cache:', err);
                         showToastSync('Base de datos cargada', 'No se pudo guardar en cache: se perderá al cerrar');
@@ -1084,7 +1103,9 @@
         const CLAVE_PUBLICACION = 'tiendas2026';
 
         function estadoPublicacion(texto) {
-            document.getElementById('publicar-estado').textContent = texto || '';
+            const el = document.getElementById('publicar-estado');
+            el.textContent = texto || '';
+            el.style.whiteSpace = 'pre-line';   // la confirmacion viene en varias lineas
         }
 
         // btoa no acepta caracteres fuera de latin1 (las descripciones traen ñ y tildes),
@@ -1153,10 +1174,24 @@
                 const datos = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(datos.error || 'El servidor respondió ' + res.status);
 
-                estadoPublicacion('');
-                showToastSync('Publicado para todos',
-                    excelData.length.toLocaleString('es-CR') + ' productos • los demás dispositivos se actualizan al abrir');
-                closeExcelModal();
+                // Se informa lo que de verdad quedo publicado. Un dispositivo apagado
+                // no puede estar sincronizado todavia: toma el catalogo al abrir la app.
+                const cuando = new Date();
+                const fecha = cuando.toLocaleDateString('es-CR');
+                const hora = cuando.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
+                const unidades = totalUnidades(excelData);
+                const resumen = excelData.length.toLocaleString('es-CR') + ' productos • ' +
+                    unidades.toLocaleString('es-CR') + ' unidades • ' + fecha + ' ' + hora;
+
+                // La confirmacion se ve unos segundos y el modal se cierra solo, para no
+                // dejar al usuario con una ventana encima que tenga que cerrar a mano.
+                estadoPublicacion(
+                    '✓ Publicado ' + fecha + ' ' + hora + '\n' +
+                    excelData.length.toLocaleString('es-CR') + ' productos • ' +
+                    unidades.toLocaleString('es-CR') + ' unidades\n' +
+                    'Las demás tiendas reciben esta misma base al abrir la app.');
+                showToastSync('Catálogo publicado para todas las tiendas', resumen);
+                setTimeout(closeExcelModal, 4000);
             } catch (err) {
                 console.error(err);
                 estadoPublicacion(

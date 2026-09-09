@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `escaner-${CACHE_VERSION}`;
 
 // Todo lo necesario para arrancar sin internet. El catálogo en sí vive en
@@ -38,9 +38,13 @@ self.addEventListener('activate', (event) => {
     self.clients.claim();
 });
 
-// index.html y products.json cambian: red primero, cache como respaldo.
-// Con cache-primero el dispositivo se quedaba con una version vieja de la app.
-const SIEMPRE_FRESCO = /(\/|\.html|products\.json|manifest\.json)$/;
+// index.html, products.json y sync-info.json cambian: red primero, cache como
+// respaldo. Con cache-primero el dispositivo se quedaba con una version vieja.
+// sync-info.json es el que decide si hay catalogo nuevo: si se sirve desde el
+// cache, el dispositivo compara siempre contra la misma fecha y nunca se entera
+// de las publicaciones. El `cache: no-store` del fetch no alcanza, porque salta
+// la cache del navegador pero no la del service worker.
+const SIEMPRE_FRESCO = /(\/|\.html|products\.json|manifest\.json|sync-info\.json)$/;
 
 function guardar(request, response) {
     if (response && response.ok) {
