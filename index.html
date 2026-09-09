@@ -359,7 +359,7 @@
         const CATALOG_KEY = 'catalog';
         // Subir este numero descarta los catalogos ya guardados en los dispositivos
         // cuando cambia la forma de los datos (p.ej. al filtrar ubicaciones).
-        const CATALOG_SCHEMA = 4;
+        const CATALOG_SCHEMA = 5;
 
         // Algunos contextos (file://, modo privado) dejan indexedDB.open colgado
         // sin resolver ni fallar. El timeout evita que la app quede en "Cargando...".
@@ -401,7 +401,7 @@
             }));
         }
 
-        // ---- ÍNDICES DE BÚSQUEDA ----
+     // ---- ÍNDICES DE BÚSQUEDA ----
         const normUpc = (v) => String(v || '').trim().replace(/^0+/, '');
 
         function setCatalog(productos, metadata, tiendas) {
@@ -646,7 +646,10 @@
                     if (!tiendas[t.codigo]) tiendas[t.codigo] = t.nombre;
                     if (!isNaN(cant) && cant !== 0) {
                         const acc = existPorSku.get(sku);
-                        acc.set(t.codigo, (acc.get(t.codigo) || 0) + cant);
+                        // NetSuite repite una fila por cada UPC del mismo SKU/tienda,
+                        // y todas traen la misma existencia. No se suma: se toma una
+                        // sola vez por tienda. Los UPC siguen guardándose todos.
+                        if (!acc.has(t.codigo)) acc.set(t.codigo, cant);
                     }
                 }
             }
@@ -810,8 +813,7 @@
             }
             document.getElementById('scanner-modal').classList.remove('active');
         }
-
-        // ---- SEARCH ----
+// ---- SEARCH ----
         // Los índices resuelven SKU y UPC en O(1); solo la descripción recorre el arreglo.
         function executeSearch() {
             const query = document.getElementById('search-input').value.trim();
@@ -865,8 +867,7 @@
                 showNoResult();
             }
         });
-
-        // ---- RENDER ----
+// ---- RENDER ----
         function showNoResult() {
             document.getElementById('no-result').classList.remove('hidden');
             document.getElementById('result-fields').classList.add('hidden');
