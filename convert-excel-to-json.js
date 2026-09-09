@@ -119,7 +119,11 @@ function convert(excelPath) {
             if (!tiendas[t.codigo]) tiendas[t.codigo] = t.nombre;
             if (!isNaN(cant) && cant !== 0) {
                 const acc = existPorSku.get(sku);
-                acc.set(t.codigo, (acc.get(t.codigo) || 0) + cant);
+                // NetSuite repite una fila por cada UPC del mismo SKU/tienda y todas
+                // traen la misma existencia: sumarlas la multiplicaba. Se toma el mayor,
+                // que ademas rescata el valor real cuando alguna fila viene vacia o en 0.
+                const prev = acc.get(t.codigo);
+                if (prev === undefined || cant > prev) acc.set(t.codigo, cant);
             }
         }
     }

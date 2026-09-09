@@ -417,7 +417,12 @@
                     const k = normUpc(upc);
                     if (!k) continue;
                     const bucket = upcIndex.get(k);
-                    if (bucket) bucket.push(item); else upcIndex.set(k, [item]);
+                    // Un SKU puede traer el mismo codigo con y sin ceros a la izquierda
+                    // (042666058292 y 42666058292). Se conservan todos en codigos_barras,
+                    // pero el producto entra una sola vez al indice: si no, la busqueda
+                    // creia que eran dos productos y abria la lista de resultados.
+                    if (bucket) { if (bucket.indexOf(item) === -1) bucket.push(item); }
+                    else upcIndex.set(k, [item]);
                 }
             }
             showDataLoaded(metadata);
@@ -647,9 +652,11 @@
                     if (!isNaN(cant) && cant !== 0) {
                         const acc = existPorSku.get(sku);
                         // NetSuite repite una fila por cada UPC del mismo SKU/tienda,
-                        // y todas traen la misma existencia. No se suma: se toma una
-                        // sola vez por tienda. Los UPC siguen guardándose todos.
-                        if (!acc.has(t.codigo)) acc.set(t.codigo, cant);
+                        // y todas traen la misma existencia. No se suma: se toma el
+                        // mayor por tienda, que rescata el valor real cuando alguna
+                        // fila viene vacía o en 0. Los UPC siguen guardándose todos.
+                        const prev = acc.get(t.codigo);
+                        if (prev === undefined || cant > prev) acc.set(t.codigo, cant);
                     }
                 }
             }
@@ -883,15 +890,39 @@
 
             const list = document.getElementById('results-list');
             list.innerHTML = '';
-            results.forEach((item) => {
-                const row = document.createElement('button');
-                row.className = 'w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition flex flex-col border-b last:border-0 border-gray-100 dark:border-gray-700';
-                row.innerHTML =
-                    '<span class="text-sm font-semibold text-gray-700 dark:text-gray-200 truncate">' + (item.descripcion || '—') + '</span>' +
-                    '<span class="text-xs text-gray-500 dark:text-gray-400">SKU: ' + (item.sku || '-') + '</span>';
-                row.onclick = () => showSingleResult(item, null);
-                list.appendChild(row);
-            });
+
+            // Un mismo codigo de barras puede estar en dos SKU (uno vigente y otro
+            // "NO USAR", por ejemplo). El que tiene existencia va de primero y muestra
+            // cuanto hay, para no quedarse con el que marca 0.
+            const conStock = (p) => (Array.isArray(p.existencias) ? p.existencias : [])
+                .filter(e => ES_TIENDA_VENTA.test(e[0]))
+                .reduce((s, e) => s + e[1], 0);
+
+            results
+                .slice()
+                .sort((a, b) => conStock(b) - conStock(a))
+                .forEach((item) => {
+                    const total = conStock(item);
+                    const row = document.createElement('button');
+                    row.className = 'w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition flex items-center justify-between gap-3 border-b last:border-0 border-gray-100 dark:border-gray-700';
+
+                    const info = document.createElement('div');
+                    info.className = 'flex flex-col min-w-0';
+                    info.innerHTML =
+                        '<span class="text-sm font-semibold text-gray-700 dark:text-gray-200 truncate">' + (item.descripcion || '—') + '</span>' +
+                        '<span class="text-xs text-gray-500 dark:text-gray-400">SKU: ' + (item.sku || '-') + '</span>';
+
+                    const badge = document.createElement('span');
+                    badge.className = total > 0
+                        ? 'shrink-0 text-xs font-bold px-2 py-1 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                        : 'shrink-0 text-xs font-semibold px-2 py-1 rounded bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400';
+                    badge.textContent = total > 0 ? total.toLocaleString('es-CR') + ' u' : 'sin stock';
+
+                    row.appendChild(info);
+                    row.appendChild(badge);
+                    row.onclick = () => showSingleResult(item, null);
+                    list.appendChild(row);
+                });
         }
 
         function showSingleResult(item, matchedUpc) {
