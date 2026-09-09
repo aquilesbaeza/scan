@@ -157,6 +157,7 @@ function main() {
             total_productos: Object.keys(productos).length,
             total_codigos_barras: totalUpc,
             total_tiendas: Object.keys(tiendas).length,
+            total_unidades: Object.values(productos).reduce((s, p) => s + p.existenciaTotal, 0),
             version: '3.0',
         },
         tiendas,
@@ -171,6 +172,7 @@ function main() {
         total_productos: out.metadata.total_productos,
         total_codigos_barras: totalUpc,
         total_tiendas: out.metadata.total_tiendas,
+        total_unidades: out.metadata.total_unidades,
         version: '3.0',
         status: 'actualizado',
     }, null, 2), 'utf-8');

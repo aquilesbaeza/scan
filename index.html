@@ -585,11 +585,11 @@
         }
 
         // ---- VIGILANCIA CONTINUA ----
-        // El inventario cambia todos los dias por ventas y traslados, y una tienda no
-        // puede quedar consultando cantidades viejas. Comprobar al arrancar no basta:
-        // el equipo de la caja queda con la app abierta toda la jornada. sync-info.json
-        // pesa unos cientos de bytes, asi que se consulta seguido sin costo real.
-        const INTERVALO_SYNC = 60000;   // 1 minuto
+        // El Excel se sube una vez al dia, no en tiempo real: no hace falta preguntar
+        // cada minuto. Lo que importa es que cuando entre la base nueva se aplique
+        // rapido y sin preguntar. El intervalo es el respaldo; lo que de verdad da la
+        // rapidez son las comprobaciones al volver a la app y al recuperar la señal.
+        const INTERVALO_SYNC = 300000;   // 5 minutos
 
         function vigilarActualizaciones() {
             if (location.protocol === 'file:') return;
@@ -605,6 +605,51 @@
             });
             window.addEventListener('online', () => buscarActualizacion());
             window.addEventListener('focus', () => buscarActualizacion());
+        }
+
+        // ---- REVISION DEL EXCEL ----
+        // Cualquier tienda puede publicar, y ninguna se entera de lo que hace la otra.
+        // Si alguien sube por error un reporte que no es el de existencias, ese archivo
+        // reemplazaria la base buena para todo el mundo. Antes de aceptarlo se revisa
+        // que se parezca a lo que tiene que ser.
+        const MINIMO_RESPECTO_AL_ACTUAL = 0.6;   // 60% de los productos que ya hay
+
+        function revisarCatalogo(productos, tiendas) {
+            const errores = [];
+            const avisos = [];
+
+            const tiendasVenta = Object.keys(tiendas || {}).filter(c => ES_TIENDA_VENTA.test(c));
+            const unidades = totalUnidades(productos);
+
+            if (!productos.length) {
+                errores.push('El archivo no tiene productos.');
+            }
+            if (!tiendasVenta.length) {
+                errores.push('No se reconocio ninguna tienda (620-627). ' +
+                    'Revise que sea el reporte de existencias por unidad de negocio.');
+            }
+            if (!unidades) {
+                avisos.push('El archivo no trae existencias: todas las tiendas quedarian en cero.');
+            }
+            if (excelData.length) {
+                const proporcion = productos.length / excelData.length;
+                if (proporcion < MINIMO_RESPECTO_AL_ACTUAL) {
+                    avisos.push('Trae ' + productos.length.toLocaleString('es-CR') +
+                        ' productos y la base actual tiene ' + excelData.length.toLocaleString('es-CR') +
+                        '. Puede que no sea el archivo correcto.');
+                }
+            }
+            return { errores, avisos, unidades, tiendasVenta };
+        }
+
+        // Resumen legible para confirmar antes de reemplazar o publicar.
+        function resumenCatalogo(productos, revision, nombreArchivo) {
+            return [
+                nombreArchivo ? 'Archivo: ' + nombreArchivo : null,
+                productos.length.toLocaleString('es-CR') + ' productos',
+                revision.unidades.toLocaleString('es-CR') + ' unidades',
+                revision.tiendasVenta.length + ' tiendas',
+            ].filter(Boolean).join('\n');
         }
 
         // ---- IMPORTAR EXCEL (arrastrar o seleccionar) ----
@@ -759,6 +804,25 @@
                 try {
                     const { productos, metadata, tiendas } = parseWorkbook(e.target.result);
                     metadata.origen = file.name;
+
+                    // Se revisa ANTES de tocar el catalogo cargado: si el archivo no
+                    // sirve, la base buena que ya tiene el dispositivo queda intacta.
+                    const revision = revisarCatalogo(productos, tiendas);
+                    if (revision.errores.length) {
+                        throw new Error(revision.errores.join(' '));
+                    }
+                    if (revision.avisos.length) {
+                        const seguir = confirm(
+                            'Revise este archivo antes de continuar:' + '\n\n' +
+                            revision.avisos.join('\n') + '\n\n' +
+                            resumenCatalogo(productos, revision, file.name) + '\n\n' +
+                            '¿Reemplazar la base de datos con este archivo?');
+                        if (!seguir) {
+                            showToast('Carga cancelada: se mantiene la base anterior');
+                            return;
+                        }
+                    }
+
                     setCatalog(productos, metadata, tiendas);
 
                     try {
@@ -1166,11 +1230,15 @@
             const productos = {};
             for (const p of excelData) productos[p.sku] = p;
 
+            // origen y total_unidades quedan registrados: asi se puede ver desde que
+            // archivo salio la base que esta publicada, y comparar contra un dispositivo.
             const metadata = {
                 generado: new Date().toISOString(),
+                origen: (metadataActual && metadataActual.origen) || '',
                 total_productos: excelData.length,
                 total_codigos_barras: excelData.reduce((s, p) => s + (p.codigos_barras || []).length, 0),
                 total_tiendas: Object.keys(tiendasCatalogo).length,
+                total_unidades: totalUnidades(excelData),
                 version: '3.0',
             };
 
@@ -1178,9 +1246,11 @@
                 products: JSON.stringify({ metadata, tiendas: tiendasCatalogo, productos }),
                 sync: JSON.stringify({
                     timestamp: metadata.generado,
+                    origen: metadata.origen,
                     total_productos: metadata.total_productos,
                     total_codigos_barras: metadata.total_codigos_barras,
                     total_tiendas: metadata.total_tiendas,
+                    total_unidades: metadata.total_unidades,
                     version: '3.0',
                     status: 'actualizado',
                 }, null, 2),
@@ -1189,6 +1259,24 @@
 
         async function publicarATodos() {
             if (!excelData.length) { showToast('Primero cargue la base de datos'); return; }
+
+            // Publicar reemplaza la base de TODAS las tiendas. Se confirma con el
+            // resumen a la vista, para que nadie mande un archivo que no era.
+            const revision = revisarCatalogo(excelData, tiendasCatalogo);
+            if (revision.errores.length) {
+                estadoPublicacion(revision.errores.join(' '));
+                return;
+            }
+            const origen = (metadataActual && metadataActual.origen) || '';
+            const confirmado = confirm(
+                'Esto reemplaza la base de datos de todas las tiendas.' + '\n\n' +
+                resumenCatalogo(excelData, revision, origen) + '\n\n' +
+                (revision.avisos.length ? revision.avisos.join('\n') + '\n\n' : '') +
+                '¿Publicar para todas las tiendas?');
+            if (!confirmado) {
+                estadoPublicacion('Publicación cancelada.');
+                return;
+            }
 
             const boton = document.getElementById('btn-publicar');
             boton.disabled = true;
