@@ -614,9 +614,42 @@
         // que se parezca a lo que tiene que ser.
         const MINIMO_RESPECTO_AL_ACTUAL = 0.6;   // 60% de los productos que ya hay
 
-        function revisarCatalogo(productos, tiendas) {
+        // Fecha a la que corresponde un Excel. El nombre manda cuando la trae
+        // ("6211 07 09 2026.xlsx"), porque describe el dia del reporte; la fecha de
+        // modificacion del archivo es el respaldo, y es menos fiable: volver a bajar
+        // un reporte viejo le pone la fecha de hoy.
+        function fechaDelArchivo(file) {
+            if (!file) return null;
+
+            const nombre = file.name || '';
+            let m = nombre.match(/(\d{2})[ _.\-](\d{2})[ _.\-](\d{4})/);      // dd mm aaaa
+            if (m) {
+                const d = new Date(+m[3], +m[2] - 1, +m[1]);
+                if (!isNaN(d) && d.getMonth() === +m[2] - 1) return { fecha: d, fuente: 'nombre' };
+            }
+            m = nombre.match(/(\d{4})[ _.\-](\d{2})[ _.\-](\d{2})/);          // aaaa mm dd
+            if (m) {
+                const d = new Date(+m[1], +m[2] - 1, +m[3]);
+                if (!isNaN(d) && d.getMonth() === +m[2] - 1) return { fecha: d, fuente: 'nombre' };
+            }
+            if (file.lastModified) return { fecha: new Date(file.lastModified), fuente: 'archivo' };
+            return null;
+        }
+
+        function revisarCatalogo(productos, tiendas, archivo) {
             const errores = [];
             const avisos = [];
+
+            // Un reporte correcto pero de un dia anterior pasa cualquier otra revision:
+            // tiene la estructura buena. La unica pista es la fecha a la que corresponde.
+            const entrante = fechaDelArchivo(archivo);
+            const actual = metadataActual && metadataActual.origenFecha
+                ? new Date(metadataActual.origenFecha) : null;
+            if (entrante && actual && entrante.fecha < actual.fecha) {
+                avisos.push('El archivo es del ' + entrante.fecha.toLocaleDateString('es-CR') +
+                    ' y la base actual es del ' + actual.toLocaleDateString('es-CR') +
+                    '. Parece un reporte mas viejo que el que ya esta cargado.');
+            }
 
             const tiendasVenta = Object.keys(tiendas || {}).filter(c => ES_TIENDA_VENTA.test(c));
             const unidades = totalUnidades(productos);
@@ -807,7 +840,10 @@
 
                     // Se revisa ANTES de tocar el catalogo cargado: si el archivo no
                     // sirve, la base buena que ya tiene el dispositivo queda intacta.
-                    const revision = revisarCatalogo(productos, tiendas);
+                    const fechaOrigen = fechaDelArchivo(file);
+                    if (fechaOrigen) metadata.origenFecha = fechaOrigen.fecha.toISOString();
+
+                    const revision = revisarCatalogo(productos, tiendas, file);
                     if (revision.errores.length) {
                         throw new Error(revision.errores.join(' '));
                     }
@@ -1235,6 +1271,7 @@
             const metadata = {
                 generado: new Date().toISOString(),
                 origen: (metadataActual && metadataActual.origen) || '',
+                origenFecha: (metadataActual && metadataActual.origenFecha) || '',
                 total_productos: excelData.length,
                 total_codigos_barras: excelData.reduce((s, p) => s + (p.codigos_barras || []).length, 0),
                 total_tiendas: Object.keys(tiendasCatalogo).length,
@@ -1247,6 +1284,7 @@
                 sync: JSON.stringify({
                     timestamp: metadata.generado,
                     origen: metadata.origen,
+                    origenFecha: metadata.origenFecha,
                     total_productos: metadata.total_productos,
                     total_codigos_barras: metadata.total_codigos_barras,
                     total_tiendas: metadata.total_tiendas,
@@ -1267,6 +1305,34 @@
                 estadoPublicacion(revision.errores.join(' '));
                 return;
             }
+            // Cualquier tienda publica y ninguna se entera de la otra, asi que se compara
+            // contra lo que esta publicado en GitHub, no contra lo local: otra tienda
+            // pudo haber subido el reporte del dia mientras esta seguia con el de ayer.
+            estadoPublicacion('Comprobando la base publicada...');
+            let publicado = null;
+            try {
+                const resSync = await fetch('sync-info.json', { cache: 'no-store' });
+                if (resSync.ok) publicado = await resSync.json();
+            } catch (e) {
+                console.warn('No se pudo leer la base publicada:', e);
+            }
+
+            const fechaLocal = metadataActual && metadataActual.origenFecha
+                ? new Date(metadataActual.origenFecha) : null;
+            const fechaPublicada = publicado && publicado.origenFecha
+                ? new Date(publicado.origenFecha) : null;
+
+            if (fechaLocal && fechaPublicada && fechaLocal < fechaPublicada) {
+                estadoPublicacion(
+                    'No se publicó: ya hay una base más reciente.' + '\n' +
+                    'Este dispositivo tiene el reporte del ' + fechaLocal.toLocaleDateString('es-CR') +
+                    ' y lo publicado es del ' + fechaPublicada.toLocaleDateString('es-CR') +
+                    (publicado.origen ? ' (' + publicado.origen + ')' : '') + '.' + '\n' +
+                    'Cargue el Excel del día para poder publicar.');
+                showToast('Ya hay una base más reciente publicada');
+                return;
+            }
+
             const origen = (metadataActual && metadataActual.origen) || '';
             const confirmado = confirm(
                 'Esto reemplaza la base de datos de todas las tiendas.' + '\n\n' +

@@ -54,6 +54,23 @@ function parseTienda(raw) {
     return { codigo, nombre: nombre || s };
 }
 
+// Fecha a la que corresponde el reporte. El nombre manda cuando la trae
+// ("6211 07 09 2026.xls"); si no, se usa la fecha de modificacion del archivo.
+function fechaDelArchivo(ruta) {
+    const nombre = path.basename(ruta);
+    let m = nombre.match(/(\d{2})[ _.\-](\d{2})[ _.\-](\d{4})/);      // dd mm aaaa
+    if (m) {
+        const d = new Date(+m[3], +m[2] - 1, +m[1]);
+        if (!isNaN(d) && d.getMonth() === +m[2] - 1) return d;
+    }
+    m = nombre.match(/(\d{4})[ _.\-](\d{2})[ _.\-](\d{2})/);          // aaaa mm dd
+    if (m) {
+        const d = new Date(+m[1], +m[2] - 1, +m[3]);
+        if (!isNaN(d) && d.getMonth() === +m[2] - 1) return d;
+    }
+    try { return fs.statSync(ruta).mtime; } catch (e) { return null; }
+}
+
 function pickLatestExcel() {
     const files = fs.readdirSync('.')
         .filter(f => /\.(xls|xlsx)$/i.test(f) && !f.startsWith('~$'))
@@ -154,6 +171,7 @@ function main() {
         metadata: {
             generado: new Date().toISOString(),
             origen: path.basename(excelPath),
+            origenFecha: (fechaDelArchivo(excelPath) || new Date()).toISOString(),
             total_productos: Object.keys(productos).length,
             total_codigos_barras: totalUpc,
             total_tiendas: Object.keys(tiendas).length,
@@ -169,6 +187,7 @@ function main() {
     fs.writeFileSync('sync-info.json', JSON.stringify({
         timestamp: out.metadata.generado,
         origen: out.metadata.origen,
+        origenFecha: out.metadata.origenFecha,
         total_productos: out.metadata.total_productos,
         total_codigos_barras: totalUpc,
         total_tiendas: out.metadata.total_tiendas,
