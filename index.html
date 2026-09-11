@@ -1089,6 +1089,10 @@
         function startScanner() {
             if (excelData.length === 0) { showToast('Primero cargue la base de datos'); return; }
 
+            // Si el teclado esta abierto, se cierra antes de mostrar la camara:
+            // si no, aparece encima del visor.
+            document.getElementById('search-input').blur();
+
             // Android e iOS solo dan la cámara en contexto seguro (https o localhost).
             if (!window.isSecureContext) {
                 showToast('La cámara necesita HTTPS. Abra la app por https:// o use el lector conectado.');
@@ -1265,10 +1269,14 @@
             const contentContainer = document.getElementById('result-fields-content');
             contentContainer.innerHTML = '';
 
-            // Preparar para siguiente búsqueda
+            // En escritorio el lector handheld dispara sobre el campo enfocado, asi que
+            // se deja listo para el siguiente codigo. En movil pasa lo contrario:
+            // enfocarlo abre el teclado justo encima del resultado que se acaba de
+            // pedir, y hay que cerrarlo a mano para poder leer las existencias.
             setTimeout(() => {
-                document.getElementById('search-input').focus();
-                document.getElementById('search-input').select();
+                const input = document.getElementById('search-input');
+                if (esMovil()) input.blur();
+                else { input.focus(); input.select(); }
             }, 300);
 
             const pintarCampo = (field) => {

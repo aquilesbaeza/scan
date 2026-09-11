@@ -1,162 +1,81 @@
-# 📦 Inventario Escáner
+# Escáner de Inventario
 
-App web responsive para búsqueda de inventario mediante cámara (códigos de barras) o entrada manual. Funciona **offline** con datos sincronizados desde repositorio Git.
+Consulta de existencias para las tiendas de Office Depot Costa Rica. El
+encargado de pasillo escanea un código de barras, lo digita o busca por
+descripción, y ve al instante **cuánto hay en su tienda y en las otras siete**:
+surte con cantidades reales y, si no tiene, sabe a qué tienda pedir la
+transferencia.
 
-## 🚀 Características
+**App:** <https://aquilesbaeza.github.io/scan/>
+**Diagnóstico** (si un dispositivo no abre): <https://aquilesbaeza.github.io/scan/diagnostico.html>
 
-- **📷 Captura por Cámara**: Lee códigos de barras con html5-qrcode
-- **✏️ Búsqueda Manual**: Buscar productos por UPC, SKU o descripción
-- **🔄 Sincronización**: BD se actualiza diariamente via Git
-- **📱 Responsive**: Compatible con Android (Chrome) e iPhone (Safari)
-- **💾 Offline-First**: Funciona sin conexión después de primera carga
-- **📊 Visualizar**: Información completa del producto (precio, cantidad, categoría, etc.)
+## Cómo se actualiza la base
 
-## 📋 Estructura
+Cualquier dispositivo, de cualquier tienda, una vez al día:
+
+1. **Cargar BD** → arrastrar o elegir el Excel del día
+2. **Publicar a todos**
+
+Todas las tiendas reciben la base nueva al abrir la app. No hace falta token ni
+configurar nada: el token de GitHub vive en un Worker de Cloudflare
+(ver [`worker/README.md`](worker/README.md)), porque GitHub revoca cualquier
+token que aparezca en un repositorio público.
 
 ```
-├── index.html                 # App principal (responsive)
-├── products.json             # BD de ~13,000 productos (se crea automático)
-├── sync-info.json            # Metadata de última actualización
-├── sw.js                      # Service Worker (caché offline)
-├── manifest.json             # PWA manifest
-├── convert-excel-to-json.js  # Convertidor Excel → JSON
-└── package.json              # Dependencias (xlsx, jsQR)
+Excel  →  la app lo convierte a JSON  →  Worker  →  GitHub Pages
+                                                        ↓
+                       620 · 621 · 622 · 623 · 624 · 625 · 626 · 627
 ```
 
-## 🔧 Instalación
+Cada equipo consulta `sync-info.json` (unos cientos de bytes) al abrir, al
+volver a la app, al recuperar la señal y cada 5 minutos. Solo descarga el
+catálogo cuando lo publicado es más nuevo que lo que tiene.
+
+## El Excel
+
+Tiene que ser el reporte de existencias por unidad de negocio, con estas 11
+columnas. Si falta alguna, la app lo rechaza y dice cuál:
+
+```
+CODIGO UPC · ID INTERNO · CODIGO SKU · DESCRIPCION · AS 400 · NUMERO DE PARTE
+ESTATUS · TIPO · EXISTENCIA · PRECIO FINAL · Unidad de Negocio del inventario
+```
+
+Dos detalles de cómo lo exporta NetSuite:
+
+- Trae **una fila por cada código de barras** del mismo SKU y tienda, todas con
+  la misma existencia. No se suman: se toma el valor, o el inventario quedaría
+  multiplicado por la cantidad de códigos del producto.
+- Solo se usan las **tiendas de venta** (códigos de 3 dígitos, 620-627). Bodega
+  externa (10xxx), mercancía en reparación (80xxx) y dañada (90xxx) se descartan.
+
+## Offline
+
+Después de la primera carga la app funciona sin señal: el catálogo vive en
+IndexedDB del dispositivo y las librerías (Tailwind, SheetJS, el escáner y las
+tipografías) se sirven desde `vendor/`, no desde CDN externo.
+
+## Archivos
+
+```
+index.html                 la app entera
+diagnostico.html           prueba el dispositivo pieza por pieza
+products.json              catálogo publicado (~4 MB, generado)
+sync-info.json             fecha y totales de lo publicado
+sw.js                      service worker (caché offline)
+manifest.json              PWA
+vendor/                    librerías y tipografías locales
+worker/                    Worker de Cloudflare que publica en GitHub
+convert-excel-to-json.js   mismo conversor, para línea de comandos
+.github/workflows/         convierte el Excel si se sube a data/
+```
+
+## Línea de comandos
 
 ```bash
 npm install
+node convert-excel-to-json.js "CR 10 09 2026.xlsx"
 ```
 
-## 📚 Flujo de Datos
-
-### 1️⃣ Convertir Excel a JSON (diariamente)
-```bash
-node convert-excel-to-json.js
-```
-- Lee archivos XLS/XLSX: `CODIGO SKU`, `DESCRIPCION`, `PRECIO`, `UPC`, etc.
-- Deduplica por SKU (mantiene primer registro)
-- Detecta inconsistencias (códigos duplicados, descripciones conflictivas)
-- Genera `products.json` con estructura optimizada
-
-### 2️⃣ Sincronizar a repositorio
-```bash
-git add products.json
-git commit -m "update: Sincronización diaria de inventario"
-git push origin main
-```
-
-### 3️⃣ Uso en dispositivos
-- Accede desde navegador (Chrome/Safari) en Android/iPhone
-- App descarga `products.json` automáticamente al abrir
-- Cachea datos localmente (Service Worker) para offline
-- Muestra: "Base de datos cargada - Fecha: 30/8/2026 - 05:22 p.m. - Registros: 13,209"
-- Busca por UPC, SKU o descripción instantáneamente
-
-## 📖 Cómo usar
-
-### Captura por Cámara
-1. Abre la pestaña **📷 Cámara**
-2. Haz clic en "▶ Iniciar Cámara"
-3. Apunta el código a la cámara (QR o código de barras)
-4. Ingresa ubicación (opcional)
-5. Haz clic en "✅ Agregar a Inventario"
-
-### Entrada Manual
-1. Abre la pestaña **✏️ Manual**
-2. Ingresa SKU (busca automáticamente en BD)
-3. Ingresa ubicación
-4. Haz clic en "➕ Agregar Producto"
-
-### Ver Listado
-1. Abre la pestaña **📋 Listado**
-2. Busca productos por SKU
-3. Exporta como JSON
-
-## 🔄 Actualizaciones de Base de Datos
-
-Cuando actualizas `products.json`:
-1. Ejecuta: `node convert-excel-to-json.js`
-2. Haz commit y push
-3. Los dispositivos descargarán la nueva versión en background
-4. Verán en **📦 Inventario**: fecha/hora de última actualización
-
-## 🌐 Compatibilidad
-
-| Navegador | Android | iPhone |
-|-----------|---------|--------|
-| Chrome | ✅ Completo | ✅ Completo |
-| Safari | ✅ Soporte | ✅ Completo |
-| Firefox | ✅ Soporte | ⚠️ Limitado |
-| Edge | ✅ Soporte | ⚠️ Limitado |
-
-**Nota**: Safari en iOS requiere permisos en Configuración > Safari > Cámara.
-
-## 🚀 Deploy
-
-### GitHub Pages
-```bash
-git add .
-git commit -m "feat: Sistema de inventario offline"
-git push origin main
-```
-Accede a: `https://tu-usuario.github.io/escaner/`
-
-### Vercel / Netlify
-Solo sube este repositorio - despliega automático.
-
-## 📊 Gestión de Inconsistencias
-
-El convertidor reporta:
-- **Códigos de barras duplicados**: Mismo UPC en múltiples filas
-- **Descripciones conflictivas**: SKU con descripciones diferentes
-- **Cantidades**: Registra si un SKU tiene múltiples cantidades
-
-Ejemplo de reporte:
-```
-📋 Inconsistencias encontradas:
-
-codigo_barras_duplicado (114,220):
-  - SKU: 1101000003, Fila: 3
-  - SKU: 1101000003, Fila: 4
-  ...
-
-descripcion_conflictiva (1):
-  - SKU: 1301000146, Fila: 133,967
-    Actual: COMPUTADORA DE ESCRITORIO HP TG02-0001LA
-    Nueva: COMPUTADORA DE ESCRITORIO HP
-```
-
-## 📱 PWA (Instalar como app)
-
-En dispositivos móviles:
-1. Abre en navegador
-2. Menú > "Instalar app"
-3. O toca el ícono **Compartir** > "Añadir a pantalla de inicio"
-
-## 🔐 Datos Locales
-
-Toda la información se guarda localmente:
-- **localStorage**: Inventario actual + BD cachea
-- **Cache API**: Assets offline (HTML, JS, estilos)
-- **Nada se envía** a servidores externos
-
-## 🛠️ Desarrollo
-
-```bash
-# Instalar dependencias
-npm install
-
-# Convertir nueva BD
-node convert-excel-to-json.js
-
-# Versionar cambios
-git add .
-git commit -m "feat: Descripción del cambio"
-git push
-```
-
-## 📄 Licencia
-
-ISC
+Cuidado: regenera `products.json` **y** `sync-info.json` en el disco local. Para
+publicar use siempre la app, que escribe los dos juntos y en orden.

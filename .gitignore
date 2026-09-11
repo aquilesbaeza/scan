@@ -7,3 +7,7 @@ node_modules/
 *.csv
 !data/*.xls
 !data/*.xlsx
+
+# Editor y compilacion movil (proyecto Capacitor abandonado)
+.claude/
+android/
