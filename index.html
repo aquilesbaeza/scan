@@ -102,10 +102,109 @@
         .animate-spin {
             animation: spin 1s linear infinite;
         }
+
+        /* Pantalla de entrada. Va aqui y no en Tailwind a proposito: este CSS pinta
+           con el HTML, antes de que baje ninguna libreria, asi que se ve de una.
+           Se va sola en cuanto el catalogo esta listo. */
+        #splash {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            transition: opacity .25s ease;
+        }
+
+        #splash.fuera {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #splash img {
+            width: 84px;
+            height: 84px;
+        }
+
+        #splash .nombre {
+            font: 700 20px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+            color: #3b6e9c;
+        }
+
+        #splash .credito {
+            font: 400 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+            color: #6b7280;
+            letter-spacing: .02em;
+        }
+
+        #splash .pista {
+            width: 168px;
+            height: 3px;
+            background: #d1d5db;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        #splash .avance {
+            width: 0;
+            height: 100%;
+            background: #3b6e9c;
+            border-radius: 2px;
+            transition: width .18s linear;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            #splash { background: #1a202c; }
+            #splash .nombre { color: #7aa7d0; }
+            #splash .credito { color: #9ca3af; }
+            #splash .pista { background: #4b5563; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            #splash, #splash .avance { transition: none; }
+        }
     </style>
 </head>
 
 <body class="bg-background-light dark:bg-background-dark text-gray-800 dark:text-gray-100 min-h-screen flex flex-col">
+
+    <!-- PANTALLA DE ENTRADA -->
+    <div id="splash">
+        <img src="icon-192.png" alt="" width="84" height="84">
+        <div class="nombre">Escáner de Inventario</div>
+        <div class="pista"><div class="avance" id="splash-avance"></div></div>
+        <div class="credito">Desarrollado por Ing. Danny Steven</div>
+    </div>
+
+    <script>
+        // El avance es real, no un temporizador: cada etapa del arranque lo mueve.
+        // Se resuelve en cuanto el catalogo esta listo, que en cache son ~0.5 s.
+        (function () {
+            var barra = document.getElementById('splash-avance');
+            var visto = 0;
+            window.splashAvance = function (pct) {
+                if (pct <= visto) return;          // nunca retrocede
+                visto = pct;
+                barra.style.width = pct + '%';
+            };
+            window.splashCerrar = function () {
+                window.splashAvance(100);
+                var s = document.getElementById('splash');
+                if (!s || s.classList.contains('fuera')) return;
+                // Un respiro minimo para que el 100% se alcance a ver, y fuera.
+                setTimeout(function () {
+                    s.classList.add('fuera');
+                    setTimeout(function () { s.remove(); }, 260);
+                }, 160);
+            };
+            // Red de seguridad: pase lo que pase, la pantalla no se queda pegada.
+            setTimeout(window.splashCerrar, 8000);
+            window.splashAvance(15);
+        })();
+    </script>
 
     <!-- HEADER -->
     <header
@@ -565,13 +664,16 @@
         // ---- ARRANQUE ----
         // 1) cache del dispositivo (instantáneo)  2) products.json  3) pedir el Excel
         window.addEventListener('DOMContentLoaded', () => {
+            splashAvance(40);
             boot().catch(err => {
                 console.error('Fallo el arranque:', err);
+                splashCerrar();
                 showNoData('No se pudo cargar el catálogo. Arrastre el Excel.');
             });
             vigilarActualizaciones();
             // Nunca dejar la pantalla de carga indefinidamente.
             setTimeout(() => {
+                splashCerrar();
                 const cargando = document.getElementById('upload-prompt');
                 if (!cargando.classList.contains('hidden')) {
                     showNoData('Arrastre el Excel del catálogo para cargarlo en este dispositivo.');
@@ -586,6 +688,7 @@
                     if (cached.schema === CATALOG_SCHEMA) {
                         setCatalog(cached.productos, cached.metadata, cached.tiendas);
                         restaurarEstadoSync();
+                        splashCerrar();
                         buscarActualizacion(cached.metadata);   // en segundo plano
                         return;
                     }
@@ -598,9 +701,11 @@
             // Con file:// el fetch falla por CORS. Antes eso dejaba la pantalla
             // "Cargando..." para siempre; ahora se ofrece cargar el Excel.
             if (location.protocol === 'file:') {
+                splashCerrar();
                 showNoData('Arrastre el Excel del catálogo para cargarlo en este dispositivo.');
                 return;
             }
+            splashAvance(60);
 
             try {
                 const ctrl = new AbortController();
@@ -610,6 +715,9 @@
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
                 // Es la descarga mas larga de todas: la primera vez no hay nada guardado.
+                // La pantalla de entrada se retira aqui: a partir de ahora informa la
+                // barra de descarga, que si sabe cuantos MB faltan.
+                splashCerrar();
                 abrirProgreso('Descargando base de datos', 'Primera carga en este dispositivo');
                 const data = JSON.parse(await leerConProgreso(res));
                 const productos = Object.values(data.productos || {});
@@ -624,6 +732,7 @@
                     totalUnidades(productos).toLocaleString('es-CR') + ' unidades');
             } catch (err) {
                 console.warn('No se pudo cargar products.json:', err);
+                splashCerrar();
                 document.getElementById('barra-progreso').classList.add('hidden');
                 showNoData('No se pudo descargar el catálogo. Arrastre el Excel para cargarlo.');
             }

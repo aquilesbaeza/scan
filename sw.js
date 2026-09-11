@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const CACHE_NAME = `escaner-${CACHE_VERSION}`;
 
 // Todo lo necesario para arrancar sin internet. El catálogo en sí vive en
@@ -7,6 +7,8 @@ const ASSETS_TO_CACHE = [
     './',
     './index.html',
     './manifest.json',
+    './icon-192.png',
+    './icon-512.png',
     './products.json',
     './vendor/tailwind.js',
     './vendor/xlsx.full.min.js',
