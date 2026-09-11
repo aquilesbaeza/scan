@@ -165,10 +165,16 @@
                 </div>
             </div>
 
-            <!-- Progreso de importacion -->
-            <div id="import-progress" class="hidden px-6 py-4 flex items-center justify-center space-x-2">
-                <div class="animate-spin"><span class="material-icons text-primary">refresh</span></div>
-                <span id="import-progress-msg" class="text-sm text-gray-500">Convirtiendo Excel a JSON...</span>
+            <!-- Barra de progreso: una sola, sirve para convertir, publicar y sincronizar -->
+            <div id="barra-progreso" class="hidden px-6 py-5">
+                <div class="flex items-baseline justify-between mb-1.5">
+                    <span id="barra-titulo" class="text-sm font-semibold text-gray-700 dark:text-gray-200"></span>
+                    <span id="barra-pct" class="text-sm font-bold text-primary dark:text-blue-400 tabular-nums">0%</span>
+                </div>
+                <div class="h-2 w-full bg-gray-200 dark:bg-gray-700 rounded overflow-hidden">
+                    <div id="barra-relleno" class="h-full bg-primary rounded transition-all duration-200" style="width:0%"></div>
+                </div>
+                <p id="barra-detalle" class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"></p>
             </div>
 
             <!-- Data loaded state -->
@@ -471,6 +477,36 @@
                 : 'Origen: catálogo publicado';
         }
 
+        // ---- BARRA DE PROGRESO ----
+        // Una sola barra para las tres operaciones largas: convertir el Excel,
+        // publicar y recibir el catalogo. Los porcentajes son reales, no simulados:
+        // salen de las filas procesadas y de los bytes enviados o recibidos.
+        function abrirProgreso(titulo, detalle) {
+            document.getElementById('upload-prompt').classList.add('hidden');
+            document.getElementById('barra-titulo').textContent = titulo;
+            document.getElementById('barra-detalle').textContent = detalle || '';
+            document.getElementById('barra-pct').textContent = '0%';
+            document.getElementById('barra-relleno').style.width = '0%';
+            document.getElementById('barra-progreso').classList.remove('hidden');
+        }
+
+        function avanzarProgreso(pct, detalle) {
+            const valor = Math.max(0, Math.min(100, Math.round(pct)));
+            document.getElementById('barra-pct').textContent = valor + '%';
+            document.getElementById('barra-relleno').style.width = valor + '%';
+            if (detalle !== undefined) document.getElementById('barra-detalle').textContent = detalle;
+        }
+
+        // Se deja ver el 100% un momento: si la barra desaparece de golpe, el
+        // usuario no llega a ver que termino bien.
+        function cerrarProgreso(detalleFinal) {
+            avanzarProgreso(100, detalleFinal);
+            setTimeout(() => document.getElementById('barra-progreso').classList.add('hidden'), 900);
+        }
+
+        // Cede el hilo para que el navegador repinte la barra antes de seguir.
+        const repintar = () => new Promise(r => setTimeout(r, 0));
+
         // Estado de sincronizacion de ESTE equipo, siempre a la vista. Un aviso que
         // dura cinco segundos no sirve para saber, media hora despues, si la base que
         // uno tiene es la misma que la de las otras tiendas.
@@ -552,18 +588,22 @@
                 clearTimeout(timer);
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
-                const data = await res.json();
+                // Es la descarga mas larga de todas: la primera vez no hay nada guardado.
+                abrirProgreso('Descargando base de datos', 'Primera carga en este dispositivo');
+                const data = JSON.parse(await leerConProgreso(res));
                 const productos = Object.values(data.productos || {});
                 if (!productos.length) throw new Error('JSON sin productos');
 
+                avanzarProgreso(92, 'Preparando la búsqueda...');
                 setCatalog(productos, data.metadata, data.tiendas);
                 marcarEstadoSync('sincronizado');
                 idbSet(CATALOG_KEY, { schema: CATALOG_SCHEMA, productos, metadata: data.metadata, tiendas: data.tiendas })
                     .catch(e => console.warn('No se pudo cachear:', e));
-                showToastSync('Base de datos cargada',
-                    productos.length.toLocaleString('es-CR') + ' registros guardados en este dispositivo');
+                cerrarProgreso(productos.length.toLocaleString('es-CR') + ' productos • ' +
+                    totalUnidades(productos).toLocaleString('es-CR') + ' unidades');
             } catch (err) {
                 console.warn('No se pudo cargar products.json:', err);
+                document.getElementById('barra-progreso').classList.add('hidden');
                 showNoData('No se pudo descargar el catálogo. Arrastre el Excel para cargarlo.');
             }
         }
@@ -572,6 +612,33 @@
         // sync-info.json pesa unos pocos bytes: se consulta en cada arranque para
         // saber si el catalogo publicado es mas nuevo que el guardado aqui. Asi,
         // subir el Excel en un solo dispositivo actualiza a todos los demas.
+        // Lee la respuesta por trozos para poder mostrar cuanto lleva descargado.
+        // Si el servidor no manda Content-Length no hay porcentaje posible, asi que
+        // se cae a un .text() normal y la barra se queda esperando.
+        async function leerConProgreso(res) {
+            const total = Number(res.headers.get('Content-Length')) || 0;
+            if (!total || !res.body || !res.body.getReader) return res.text();
+
+            const lector = res.body.getReader();
+            const trozos = [];
+            let recibido = 0;
+            const mb = (b) => (b / 1048576).toFixed(1) + ' MB';
+
+            while (true) {
+                const { done, value } = await lector.read();
+                if (done) break;
+                trozos.push(value);
+                recibido += value.length;
+                // La descarga ocupa hasta el 85%; el resto es armar los indices.
+                avanzarProgreso((recibido / total) * 85, mb(recibido) + ' de ' + mb(total));
+            }
+
+            const todo = new Uint8Array(recibido);
+            let pos = 0;
+            for (const t of trozos) { todo.set(t, pos); pos += t.length; }
+            return new TextDecoder().decode(todo);
+        }
+
         async function buscarActualizacion(metadataLocal) {
             if (location.protocol === 'file:') return;
             if (comprobandoSync) return;              // ya hay una comprobacion en curso
@@ -590,9 +657,13 @@
                 const local = new Date((metadataLocal && metadataLocal.generado) || 0);
                 if (!(publicado > local)) return;
 
+                abrirProgreso('Recibiendo base de datos nueva',
+                    sync.origen ? 'Publicada: ' + sync.origen : 'Descargando...');
+
                 const resProd = await fetch('products.json', { cache: 'no-store' });
-                if (!resProd.ok) return;
-                const data = await resProd.json();
+                if (!resProd.ok) { document.getElementById('barra-progreso').classList.add('hidden'); return; }
+
+                const data = JSON.parse(await leerConProgreso(resProd));
                 const productos = Object.values(data.productos || {});
                 if (!productos.length) return;
 
@@ -600,13 +671,13 @@
                 marcarEstadoSync('sincronizado', publicado);
                 await idbSet(CATALOG_KEY, { schema: CATALOG_SCHEMA, productos, metadata: data.metadata, tiendas: data.tiendas });
 
-                // El aviso lleva fecha, hora y unidades del catalogo publicado: asi se
-                // puede confirmar de un vistazo que dos dispositivos tienen lo mismo.
+                // El cierre de la barra lleva fecha, hora y unidades del catalogo
+                // publicado: asi se confirma de un vistazo que dos equipos tienen lo mismo.
                 const fecha = publicado.toLocaleDateString('es-CR');
                 const hora = publicado.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
-                showToastSync('Base de datos actualizada',
+                cerrarProgreso('Actualizado ' + fecha + ' ' + hora + ' • ' +
                     productos.length.toLocaleString('es-CR') + ' productos • ' +
-                    totalUnidades(productos).toLocaleString('es-CR') + ' unidades • ' + fecha + ' ' + hora);
+                    totalUnidades(productos).toLocaleString('es-CR') + ' unidades');
 
                 // Si hay un producto en pantalla, sus cantidades acaban de quedar viejas:
                 // se vuelve a buscar lo mismo para que muestre las del catalogo nuevo.
@@ -785,7 +856,11 @@
         }
 
         // Misma lógica que convert-excel-to-json.js, ejecutada en el dispositivo.
-        function parseWorkbook(arrayBuffer) {
+        async function parseWorkbook(arrayBuffer) {
+            // XLSX.read es sincrono y con 130 mil filas bloquea unos segundos (mas en
+            // el celular). Se avisa, para que la barra quieta no parezca colgada.
+            avanzarProgreso(8, 'Leyendo el archivo, esto tarda unos segundos...');
+            await repintar();
             const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
             const ws = wb.Sheets[wb.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
@@ -812,7 +887,17 @@
             const existPorSku = new Map();
             const tiendas = {};
 
-            for (const row of rows) {
+            // Por bloques y no de un tirón: 134 mil filas bloquean la pantalla varios
+            // segundos, y en el celular parece que la app se colgó. Cediendo el hilo
+            // cada bloque la barra avanza y el equipo sigue respondiendo.
+            const BLOQUE = 8000;
+            for (let i = 0; i < rows.length; i++) {
+                if (i && i % BLOQUE === 0) {
+                    avanzarProgreso(15 + (i / rows.length) * 70,
+                        i.toLocaleString('es-CR') + ' de ' + rows.length.toLocaleString('es-CR') + ' filas');
+                    await repintar();
+                }
+                const row = rows[i];
                 const sku = str(val(row, 'sku'));
                 const desc = str(val(row, 'descripcion'));
                 if (!sku || !desc) continue;
@@ -867,6 +952,9 @@
                 p.existenciaTotal = p.existencias.reduce((s, e) => s + e[1], 0);
             }
 
+            avanzarProgreso(90, 'Ordenando existencias por tienda...');
+            await repintar();
+
             const productos = Array.from(map.values());
             return {
                 productos,
@@ -886,19 +974,17 @@
             if (!/\.(xls|xlsx)$/i.test(file.name)) { showToast('Debe ser un archivo .xls o .xlsx'); return; }
             if (typeof XLSX === 'undefined') { showToast('Librería de Excel no disponible'); return; }
 
-            document.getElementById('upload-prompt').classList.add('hidden');
-            document.getElementById('import-progress-msg').textContent =
-                'Excel cargado: ' + file.name + ' — convirtiendo a JSON...';
-            document.getElementById('import-progress').classList.remove('hidden');
+            abrirProgreso('Convirtiendo a JSON',
+                file.name + ' — ' + (file.size / 1048576).toFixed(1) + ' MB');
 
             const reader = new FileReader();
             reader.onerror = () => {
-                document.getElementById('import-progress').classList.add('hidden');
+                document.getElementById('barra-progreso').classList.add('hidden');
                 showToast('No se pudo leer el archivo');
             };
             reader.onload = async function (e) {
                 try {
-                    const { productos, metadata, tiendas } = parseWorkbook(e.target.result);
+                    const { productos, metadata, tiendas } = await parseWorkbook(e.target.result);
                     metadata.origen = file.name;
 
                     // Se revisa ANTES de tocar el catalogo cargado: si el archivo no
@@ -925,14 +1011,15 @@
                     setCatalog(productos, metadata, tiendas);
                     marcarEstadoSync('local');
 
+                    const resumen = productos.length.toLocaleString('es-CR') + ' productos • ' +
+                        totalUnidades(productos).toLocaleString('es-CR') + ' unidades';
                     try {
+                        avanzarProgreso(95, 'Guardando en este dispositivo...');
                         await withTimeout(idbSet(CATALOG_KEY, { schema: CATALOG_SCHEMA, productos, metadata, tiendas }), 60000, 'guardar cache');
-                        showToastSync('Excel convertido a JSON',
-                            productos.length.toLocaleString('es-CR') + ' productos • ' +
-                            totalUnidades(productos).toLocaleString('es-CR') + ' unidades • guardado en este dispositivo');
+                        cerrarProgreso('Listo: ' + resumen);
                     } catch (err) {
                         console.warn('No se pudo guardar en cache:', err);
-                        showToastSync('Base de datos cargada', 'No se pudo guardar en cache: se perderá al cerrar');
+                        cerrarProgreso('Cargado, pero no se pudo guardar: se perderá al cerrar');
                     }
 
                     document.getElementById('search-input').value = '';
@@ -943,11 +1030,10 @@
                     estadoPublicacion('Cargado en este dispositivo. Publique para actualizar a los demás.');
                 } catch (err) {
                     console.error(err);
+                    document.getElementById('barra-progreso').classList.add('hidden');
                     showToast('Error al convertir el Excel: ' + err.message);
                     if (!excelData.length) showNoData('No se pudo leer ese Excel. Intente con otro archivo.');
                     closeExcelModal();
-                } finally {
-                    document.getElementById('import-progress').classList.add('hidden');
                 }
             };
             reader.readAsArrayBuffer(file);
@@ -1359,6 +1445,38 @@
             };
         }
 
+        // Se usa XMLHttpRequest en vez de fetch solo por esto: fetch no informa cuanto
+        // lleva subido, y el catalogo son unos 5 MB que por datos moviles tardan. Sin
+        // el porcentaje real, la barra seria una animacion inventada.
+        function enviarAlWorker(cuerpo) {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', WORKER_URL);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.setRequestHeader('X-Clave', CLAVE_PUBLICACION);
+
+                const mb = (b) => (b / 1048576).toFixed(1) + ' MB';
+                xhr.upload.onprogress = (ev) => {
+                    if (!ev.lengthComputable) return;
+                    // La subida ocupa del 10% al 85%; el resto es el commit en GitHub.
+                    avanzarProgreso(10 + (ev.loaded / ev.total) * 75,
+                        'Enviando ' + mb(ev.loaded) + ' de ' + mb(ev.total));
+                };
+                xhr.upload.onload = () => avanzarProgreso(88, 'Guardando en GitHub...');
+
+                xhr.onload = () => {
+                    let datos = {};
+                    try { datos = JSON.parse(xhr.responseText); } catch (e) { }
+                    if (xhr.status >= 200 && xhr.status < 300) resolve(datos);
+                    else reject(new Error(datos.error || 'El servidor respondió ' + xhr.status));
+                };
+                xhr.onerror = () => reject(new Error('Failed to fetch'));
+                xhr.ontimeout = () => reject(new Error('La publicación tardó demasiado'));
+                xhr.timeout = 180000;
+                xhr.send(cuerpo);
+            });
+        }
+
         async function publicarATodos() {
             if (!excelData.length) { showToast('Primero cargue la base de datos'); return; }
 
@@ -1413,26 +1531,21 @@
             boton.classList.add('opacity-60');
 
             try {
-                estadoPublicacion('Preparando el catálogo...');
+                abrirProgreso('Publicando para todas las tiendas', 'Preparando el catálogo...');
+                await repintar();
                 const { products, sync } = catalogoParaPublicar();
 
                 // El base64 se hace aqui y no en el Worker: son unos 40 ms en el
                 // dispositivo, y le ahorra al Worker el limite de CPU del plan gratuito.
+                avanzarProgreso(8, 'Empaquetando...');
+                await repintar();
                 const cuerpo = JSON.stringify({
                     productos: aBase64(products),
                     sync: aBase64(sync),
                     total: excelData.length,
                 });
 
-                estadoPublicacion('Publicando para todas las tiendas...');
-                const res = await fetch(WORKER_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-Clave': CLAVE_PUBLICACION },
-                    body: cuerpo,
-                });
-
-                const datos = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(datos.error || 'El servidor respondió ' + res.status);
+                await enviarAlWorker(cuerpo);
 
                 // Se informa lo que de verdad quedo publicado. Un dispositivo apagado
                 // no puede estar sincronizado todavia: toma el catalogo al abrir la app.
@@ -1443,16 +1556,10 @@
                 const resumen = excelData.length.toLocaleString('es-CR') + ' productos • ' +
                     unidades.toLocaleString('es-CR') + ' unidades • ' + fecha + ' ' + hora;
 
-                // La confirmacion se ve unos segundos y el modal se cierra solo, para no
-                // dejar al usuario con una ventana encima que tenga que cerrar a mano.
-                estadoPublicacion(
-                    '✓ Publicado ' + fecha + ' ' + hora + '\n' +
-                    excelData.length.toLocaleString('es-CR') + ' productos • ' +
-                    unidades.toLocaleString('es-CR') + ' unidades\n' +
-                    'Las demás tiendas reciben esta misma base al abrir la app.');
+                // La barra da la confirmacion; el estado de la cabecera queda fijo.
                 marcarEstadoSync('publicado', cuando);
-                showToastSync('Catálogo publicado para todas las tiendas', resumen);
-                setTimeout(closeExcelModal, 4000);
+                cerrarProgreso('Publicado ' + fecha + ' ' + hora + ' • ' + resumen);
+                closeExcelModal();
             } catch (err) {
                 console.error(err);
                 estadoPublicacion(
