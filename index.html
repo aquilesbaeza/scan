@@ -103,118 +103,47 @@
             animation: spin 1s linear infinite;
         }
 
-        /* Pantalla de entrada. Va aqui y no en Tailwind a proposito: este CSS pinta
-           con el HTML, antes de que baje ninguna libreria, asi que se ve de una.
-           Se va sola en cuanto el catalogo esta listo. */
-        #splash {
-            position: fixed;
-            inset: 0;
-            z-index: 200;
-            background: #f0f2f5;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 14px;
-            transition: opacity .25s ease;
-        }
-
-        #splash.fuera {
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        #splash img {
-            width: 84px;
-            height: 84px;
-        }
-
-        #splash .nombre {
-            font: 700 20px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-            color: #3b6e9c;
-        }
-
-        #splash .credito {
-            font: 400 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-            color: #6b7280;
-            letter-spacing: .02em;
-        }
-
-        #splash .pista {
-            width: 168px;
-            height: 3px;
-            background: #d1d5db;
-            border-radius: 2px;
-            overflow: hidden;
-        }
-
-        #splash .avance {
-            width: 0;
-            height: 100%;
-            background: #3b6e9c;
-            border-radius: 2px;
-            transition: width .18s linear;
-        }
-
-        @media (prefers-color-scheme: dark) {
-            #splash { background: #1a202c; }
-            #splash .nombre { color: #7aa7d0; }
-            #splash .credito { color: #9ca3af; }
-            #splash .pista { background: #4b5563; }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-            #splash, #splash .avance { transition: none; }
-        }
     </style>
 </head>
 
 <body class="bg-background-light dark:bg-background-dark text-gray-800 dark:text-gray-100 min-h-screen flex flex-col">
 
-    <!-- PANTALLA DE ENTRADA -->
-    <div id="splash">
-        <img src="icon-192.png" alt="" width="84" height="84">
-        <div class="nombre">Escáner de Inventario</div>
-        <div class="pista"><div class="avance" id="splash-avance"></div></div>
-        <div class="credito">Desarrollado por Ing. Danny Steven</div>
-    </div>
-
-    <script>
-        // El avance es real, no un temporizador: cada etapa del arranque lo mueve.
-        // Se resuelve en cuanto el catalogo esta listo, que en cache son ~0.5 s.
-        (function () {
-            var barra = document.getElementById('splash-avance');
-            var visto = 0;
-            window.splashAvance = function (pct) {
-                if (pct <= visto) return;          // nunca retrocede
-                visto = pct;
-                barra.style.width = pct + '%';
-            };
-            window.splashCerrar = function () {
-                window.splashAvance(100);
-                var s = document.getElementById('splash');
-                if (!s || s.classList.contains('fuera')) return;
-                // Un respiro minimo para que el 100% se alcance a ver, y fuera.
-                setTimeout(function () {
-                    s.classList.add('fuera');
-                    setTimeout(function () { s.remove(); }, 260);
-                }, 160);
-            };
-            // Red de seguridad: pase lo que pase, la pantalla no se queda pegada.
-            setTimeout(window.splashCerrar, 8000);
-            window.splashAvance(15);
-        })();
-    </script>
-
     <!-- HEADER -->
     <header
         class="bg-surface-light dark:bg-surface-dark border-b border-gray-300 dark:border-gray-700 shadow-sm z-10 w-full">
         <div class="max-w-2xl mx-auto w-full">
-            <div class="px-4 py-2 flex items-center justify-between">
+            <div class="px-4 py-2 flex items-center justify-between gap-3">
                 <div class="flex flex-col">
                     <span
                         class="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Oracle</span>
                     <span class="text-xl font-bold text-gray-700 dark:text-gray-200 leading-none">NetSuite</span>
+                </div>
+
+                <!-- Credito, discreto: el escaner de adorno y dos lineas pequeñas -->
+                <div class="flex items-center gap-2 shrink-0 opacity-80">
+                    <svg viewBox="0 0 512 512" class="w-6 h-6 shrink-0" aria-hidden="true">
+                        <g fill="#f5c93f">
+                            <rect x="122" y="143" width="34" height="92" rx="10" />
+                            <rect x="356" y="143" width="34" height="92" rx="10" />
+                        </g>
+                        <path fill="#3c3f4a"
+                            d="M 190 82 H 322 a 34 34 0 0 1 34 34 V 250 l -22 34 V 396 a 34 34 0 0 1 -34 34 H 212 a 34 34 0 0 1 -34 -34 V 284 l -22 -34 V 116 a 34 34 0 0 1 34 -34 Z" />
+                        <rect x="180" y="112" width="152" height="126" rx="8" fill="#6ab7ec" />
+                        <rect x="228" y="264" width="56" height="24" rx="12" fill="#f5c93f" />
+                        <g fill="#d7dbe2">
+                            <rect x="194" y="308" width="34" height="24" rx="7" />
+                            <rect x="239" y="308" width="34" height="24" rx="7" />
+                            <rect x="284" y="308" width="34" height="24" rx="7" />
+                            <rect x="194" y="344" width="34" height="24" rx="7" />
+                            <rect x="239" y="344" width="34" height="24" rx="7" />
+                            <rect x="284" y="344" width="34" height="24" rx="7" />
+                        </g>
+                    </svg>
+                    <div class="flex flex-col items-end leading-none">
+                        <span
+                            class="text-[8px] uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Developed by</span>
+                        <span class="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mt-0.5 whitespace-nowrap">Ing. Danny Steven</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -561,12 +490,11 @@
             document.getElementById('no-data').classList.add('hidden');
             document.getElementById('data-loaded').classList.remove('hidden');
 
-            const fecha = metadata && metadata.generado ? new Date(metadata.generado) : new Date();
-            const date = fecha.toLocaleDateString('es-CR');
-            const time = fecha.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
+            // Solo la cantidad de productos: el resto de cifras no le dice nada a
+            // quien esta surtiendo un pasillo. Que base tiene y desde cuando se lee
+            // en la linea de abajo, con el nombre del archivo y la hora.
             document.getElementById('record-count').textContent =
-                excelData.length.toLocaleString('es-CR') + ' registros • ' +
-                totalUnidades(excelData).toLocaleString('es-CR') + ' unidades • ' + date + ' - ' + time;
+                excelData.length.toLocaleString('es-CR') + ' productos';
 
             // Esta linea no se borra sola: cualquiera puede mirar la pantalla y saber
             // de que archivo salio la base que tiene, sin depender de haber visto el
@@ -664,16 +592,13 @@
         // ---- ARRANQUE ----
         // 1) cache del dispositivo (instantáneo)  2) products.json  3) pedir el Excel
         window.addEventListener('DOMContentLoaded', () => {
-            splashAvance(40);
             boot().catch(err => {
                 console.error('Fallo el arranque:', err);
-                splashCerrar();
                 showNoData('No se pudo cargar el catálogo. Arrastre el Excel.');
             });
             vigilarActualizaciones();
             // Nunca dejar la pantalla de carga indefinidamente.
             setTimeout(() => {
-                splashCerrar();
                 const cargando = document.getElementById('upload-prompt');
                 if (!cargando.classList.contains('hidden')) {
                     showNoData('Arrastre el Excel del catálogo para cargarlo en este dispositivo.');
@@ -688,7 +613,6 @@
                     if (cached.schema === CATALOG_SCHEMA) {
                         setCatalog(cached.productos, cached.metadata, cached.tiendas);
                         restaurarEstadoSync();
-                        splashCerrar();
                         buscarActualizacion(cached.metadata);   // en segundo plano
                         return;
                     }
@@ -701,11 +625,9 @@
             // Con file:// el fetch falla por CORS. Antes eso dejaba la pantalla
             // "Cargando..." para siempre; ahora se ofrece cargar el Excel.
             if (location.protocol === 'file:') {
-                splashCerrar();
                 showNoData('Arrastre el Excel del catálogo para cargarlo en este dispositivo.');
                 return;
             }
-            splashAvance(60);
 
             try {
                 const ctrl = new AbortController();
@@ -715,9 +637,6 @@
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
                 // Es la descarga mas larga de todas: la primera vez no hay nada guardado.
-                // La pantalla de entrada se retira aqui: a partir de ahora informa la
-                // barra de descarga, que si sabe cuantos MB faltan.
-                splashCerrar();
                 abrirProgreso('Descargando base de datos', 'Primera carga en este dispositivo');
                 const data = JSON.parse(await leerConProgreso(res));
                 const productos = Object.values(data.productos || {});
@@ -732,7 +651,6 @@
                     totalUnidades(productos).toLocaleString('es-CR') + ' unidades');
             } catch (err) {
                 console.warn('No se pudo cargar products.json:', err);
-                splashCerrar();
                 document.getElementById('barra-progreso').classList.add('hidden');
                 showNoData('No se pudo descargar el catálogo. Arrastre el Excel para cargarlo.');
             }
