@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport" />
+    <title>Diagnóstico - Escáner de Inventario</title>
+    <!-- Sin dependencias a proposito: esta pagina tiene que abrir aunque todo lo
+         demas falle. Si no carga ni esto, el problema es la red o el dispositivo. -->
+    <style>
+        :root {
+            --fondo: #f0f2f5;
+            --papel: #ffffff;
+            --texto: #1f2937;
+            --suave: #6b7280;
+            --linea: #d1d5db;
+            --ok: #15803d;
+            --mal: #b91c1c;
+            --aviso: #b45309;
+            --primario: #3b6e9c;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --fondo: #1a202c;
+                --papel: #2d3748;
+                --texto: #f3f4f6;
+                --suave: #9ca3af;
+                --linea: #4b5563;
+                --ok: #4ade80;
+                --mal: #f87171;
+                --aviso: #fbbf24;
+                --primario: #7aa7d0;
+            }
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 16px max(16px, env(safe-area-inset-left)) 32px;
+            background: var(--fondo);
+            color: var(--texto);
+            font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        }
+
+        h1 {
+            font-size: 19px;
+            margin: 0 0 2px;
+        }
+
+        .sub {
+            color: var(--suave);
+            font-size: 13px;
+            margin: 0 0 16px;
+        }
+
+        .prueba {
+            background: var(--papel);
+            border: 1px solid var(--linea);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .marca {
+            font-size: 18px;
+            line-height: 1.3;
+            flex-shrink: 0;
+            width: 20px;
+            text-align: center;
+        }
+
+        .ok { color: var(--ok); }
+        .mal { color: var(--mal); }
+        .aviso { color: var(--aviso); }
+
+        .cuerpo { min-width: 0; flex: 1; }
+
+        .nombre { font-weight: 600; }
+
+        .detalle {
+            color: var(--suave);
+            font-size: 13px;
+            margin-top: 2px;
+            word-break: break-word;
+        }
+
+        button {
+            width: 100%;
+            padding: 13px;
+            margin-top: 14px;
+            font: inherit;
+            font-weight: 600;
+            color: #fff;
+            background: var(--primario);
+            border: 0;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        button.gris {
+            background: var(--linea);
+            color: var(--texto);
+        }
+
+        #resumen {
+            background: var(--papel);
+            border: 1px solid var(--linea);
+            border-left: 4px solid var(--primario);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Diagnóstico del escáner</h1>
+    <p class="sub">Abra esta página en el dispositivo que falla y mande el resultado.</p>
+
+    <div id="resumen">Ejecutando pruebas...</div>
+    <div id="pruebas"></div>
+
+    <button onclick="copiar()">Copiar resultado</button>
+    <button class="gris" onclick="location.reload()">Repetir pruebas</button>
+    <button class="gris" onclick="limpiar()">Borrar datos y reintentar</button>
+
+    <script>
+        var lineas = [];
+
+        function fila(estado, nombre, detalle) {
+            var marca = estado === 'ok' ? '✓' : (estado === 'mal' ? '✕' : '!');
+            var div = document.createElement('div');
+            div.className = 'prueba';
+            div.innerHTML = '<div class="marca ' + estado + '">' + marca + '</div>' +
+                '<div class="cuerpo"><div class="nombre"></div><div class="detalle"></div></div>';
+            div.querySelector('.nombre').textContent = nombre;
+            div.querySelector('.detalle').textContent = detalle || '';
+            document.getElementById('pruebas').appendChild(div);
+            lineas.push(marca + ' ' + nombre + (detalle ? ' — ' + detalle : ''));
+        }
+
+        function mb(n) { return (n / 1048576).toFixed(2) + ' MB'; }
+
+        function copiar() {
+            var texto = lineas.join('\n');
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(texto)
+                    .then(function () { alert('Resultado copiado. Péguelo en el chat.'); })
+                    .catch(function () { prompt('Copie este texto:', texto); });
+            } else {
+                prompt('Copie este texto:', texto);
+            }
+        }
+
+        function limpiar() {
+            try { indexedDB.deleteDatabase('scanInventory'); } catch (e) { }
+            try { localStorage.clear(); } catch (e) { }
+            if (navigator.serviceWorker) {
+                navigator.serviceWorker.getRegistrations().then(function (rs) {
+                    rs.forEach(function (r) { r.unregister(); });
+                });
+            }
+            if (window.caches) {
+                caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); });
+            }
+            setTimeout(function () { alert('Datos borrados. Vuelva a abrir la app.'); }, 800);
+        }
+
+        function correr() {
+            // ---- Dispositivo ----
+            var ua = navigator.userAgent;
+            var ios = /iPhone|iPad|iPod/.test(ua);
+            var version = (ua.match(/OS (\d+)[_.](\d+)/) || [])[0] || '';
+            fila('ok', 'Navegador', ua.slice(0, 120));
+            if (ios) fila(version ? 'ok' : 'aviso', 'Versión de iOS', version.replace('OS ', 'iOS ').replace('_', '.'));
+            fila(window.isSecureContext ? 'ok' : 'mal', 'Conexión segura (HTTPS)',
+                window.isSecureContext ? location.origin : 'SIN HTTPS: la cámara no va a funcionar');
+            fila('ok', 'Pantalla', window.innerWidth + ' x ' + window.innerHeight +
+                '  (densidad ' + (window.devicePixelRatio || 1) + ')');
+
+            // ---- Almacenamiento ----
+            try {
+                localStorage.setItem('_p', '1');
+                localStorage.removeItem('_p');
+                fila('ok', 'localStorage', 'disponible');
+            } catch (e) {
+                fila('mal', 'localStorage', 'BLOQUEADO — ' + e.name + '. ¿Navegación privada?');
+            }
+
+            probarIndexedDB();
+        }
+
+        function probarIndexedDB() {
+            if (!window.indexedDB) {
+                fila('mal', 'IndexedDB', 'NO EXISTE. La base no se puede guardar en este dispositivo.');
+                return probarRed();
+            }
+            var listo = false;
+            var t = setTimeout(function () {
+                if (listo) return;
+                listo = true;
+                fila('mal', 'IndexedDB', 'SE QUEDÓ COLGADO (sin responder a los 6 s). Es el fallo típico de Safari en navegación privada.');
+                probarRed();
+            }, 6000);
+
+            var req;
+            try { req = indexedDB.open('_diag', 1); }
+            catch (e) {
+                clearTimeout(t); listo = true;
+                fila('mal', 'IndexedDB', 'Error al abrir: ' + e.message);
+                return probarRed();
+            }
+            req.onupgradeneeded = function () { req.result.createObjectStore('kv'); };
+            req.onerror = function () {
+                if (listo) return; listo = true; clearTimeout(t);
+                fila('mal', 'IndexedDB', 'Error: ' + (req.error && req.error.message));
+                probarRed();
+            };
+            req.onsuccess = function () {
+                if (listo) return; listo = true; clearTimeout(t);
+                var db = req.result;
+                // Se escribe algo grande: el catalogo real son varios MB y ahi es
+                // donde Safari suele quedarse corto de cuota.
+                try {
+                    var grande = new Array(200000).join('x');   // ~200 KB
+                    var tx = db.transaction('kv', 'readwrite');
+                    tx.objectStore('kv').put({ d: grande }, 'p');
+                    tx.oncomplete = function () {
+                        fila('ok', 'IndexedDB', 'escritura y lectura correctas');
+                        try { indexedDB.deleteDatabase('_diag'); } catch (e) { }
+                        probarCuota();
+                    };
+                    tx.onerror = function () {
+                        fila('mal', 'IndexedDB', 'No deja escribir: ' + (tx.error && tx.error.message));
+                        probarCuota();
+                    };
+                } catch (e) {
+                    fila('mal', 'IndexedDB', 'Error al escribir: ' + e.message);
+                    probarCuota();
+                }
+            };
+        }
+
+        function probarCuota() {
+            if (navigator.storage && navigator.storage.estimate) {
+                navigator.storage.estimate().then(function (e) {
+                    var falta = (e.quota || 0) - (e.usage || 0);
+                    fila(falta > 20 * 1048576 ? 'ok' : 'mal', 'Espacio disponible',
+                        'usado ' + mb(e.usage || 0) + ' de ' + mb(e.quota || 0) +
+                        ' — libre ' + mb(falta) + (falta > 20 * 1048576 ? '' : ' (INSUFICIENTE: el catálogo pesa 4 MB)'));
+                    probarRed();
+                }).catch(function () {
+                    fila('aviso', 'Espacio disponible', 'el navegador no lo informa');
+                    probarRed();
+                });
+            } else {
+                fila('aviso', 'Espacio disponible', 'el navegador no lo informa (normal en Safari)');
+                probarRed();
+            }
+        }
+
+        function probarRed() {
+            var t0 = Date.now();
+            fetch('sync-info.json', { cache: 'no-store' })
+                .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(function (s) {
+                    fila('ok', 'sync-info.json', (Date.now() - t0) + ' ms — publicado ' +
+                        (s.origen || '?') + ', ' + (s.total_productos || '?') + ' productos, ' +
+                        (s.total_unidades || '?') + ' unidades');
+                    probarCatalogo();
+                })
+                .catch(function (e) {
+                    fila('mal', 'sync-info.json', 'NO SE PUDO DESCARGAR: ' + e.message);
+                    probarCatalogo();
+                });
+        }
+
+        function probarCatalogo() {
+            var t0 = Date.now();
+            fetch('products.json', { cache: 'no-store' })
+                .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.text();
+                })
+                .then(function (texto) {
+                    var tDesc = Date.now() - t0;
+                    fila('ok', 'Descarga del catálogo', mb(texto.length) + ' en ' + tDesc + ' ms');
+                    var t1 = Date.now();
+                    try {
+                        var d = JSON.parse(texto);
+                        var n = Object.keys(d.productos || {}).length;
+                        fila(n > 0 ? 'ok' : 'mal', 'Lectura del catálogo',
+                            n.toLocaleString('es-CR') + ' productos en ' + (Date.now() - t1) + ' ms');
+                    } catch (e) {
+                        fila('mal', 'Lectura del catálogo', 'FALLÓ: ' + e.message +
+                            ' (suele ser falta de memoria en el dispositivo)');
+                    }
+                    probarLibrerias();
+                })
+                .catch(function (e) {
+                    fila('mal', 'Descarga del catálogo', 'FALLÓ: ' + e.message);
+                    probarLibrerias();
+                });
+        }
+
+        function probarLibrerias() {
+            var archivos = [
+                ['vendor/tailwind.js', 'Estilos (Tailwind)'],
+                ['vendor/xlsx.full.min.js', 'Lector de Excel'],
+                ['vendor/html5-qrcode.min.js', 'Escáner de códigos'],
+                ['vendor/fonts.css', 'Tipografías e iconos'],
+            ];
+            var pendientes = archivos.length;
+            archivos.forEach(function (a) {
+                fetch(a[0], { method: 'GET' })
+                    .then(function (r) {
+                        fila(r.ok ? 'ok' : 'mal', a[1], r.ok ? 'carga correcta' : 'HTTP ' + r.status);
+                    })
+                    .catch(function (e) {
+                        fila('mal', a[1], 'NO CARGA: ' + e.message);
+                    })
+                    .then(function () { if (--pendientes === 0) probarExtras(); });
+            });
+        }
+
+        function probarExtras() {
+            fila(window.ReadableStream ? 'ok' : 'aviso', 'Descarga con progreso',
+                window.ReadableStream ? 'soportado' : 'no soportado (la barra no marcará %, pero funciona)');
+
+            var cam = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+            fila(cam ? 'ok' : 'mal', 'Cámara para escanear',
+                cam ? 'disponible (pedirá permiso al usarla)' : 'NO disponible — requiere HTTPS');
+
+            if (!navigator.serviceWorker) {
+                fila('aviso', 'Service Worker', 'no soportado: la app no funcionará sin señal');
+                terminar();
+            } else {
+                navigator.serviceWorker.getRegistrations().then(function (rs) {
+                    fila('ok', 'Service Worker', rs.length ? rs.length + ' registrado(s)' : 'ninguno todavía (se instala al abrir la app)');
+                    terminar();
+                }).catch(function () { terminar(); });
+            }
+        }
+
+        function terminar() {
+            var malos = lineas.filter(function (l) { return l.indexOf('✕') === 0; });
+            var r = document.getElementById('resumen');
+            if (!malos.length) {
+                r.innerHTML = '<b style="color:var(--ok)">Todo correcto.</b><br>' +
+                    'Este dispositivo puede usar la app sin problemas.';
+            } else {
+                r.innerHTML = '<b style="color:var(--mal)">' + malos.length + ' problema(s):</b><br>' +
+                    malos.map(function (l) { return l.slice(2); }).join('<br>');
+            }
+            lineas.unshift('--- Diagnóstico ' + new Date().toLocaleString('es-CR') + ' ---');
+        }
+
+        correr();
+    </script>
+</body>
+
+</html>
