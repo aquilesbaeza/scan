@@ -22,6 +22,22 @@ const COLUMN_MAPPINGS = {
     tienda: ['UNIDAD DE NEGOCIO DEL INVENTARIO', 'UNIDAD DE NEGOCIO', 'TIENDA', 'UBICACION'],
 };
 
+// Las 11 columnas del reporte de existencias por unidad de negocio, con el
+// nombre tal cual aparece en el Excel para poder decir cuál falta.
+const COLUMNAS_REQUERIDAS = {
+    upc: 'CODIGO UPC',
+    idInterno: 'ID INTERNO',
+    sku: 'CODIGO SKU',
+    descripcion: 'DESCRIPCION',
+    as400: 'AS 400',
+    numParte: 'NUMERO DE PARTE',
+    estatus: 'ESTATUS',
+    tipo: 'TIPO',
+    existencia: 'EXISTENCIA',
+    precio: 'PRECIO FINAL',
+    tienda: 'Unidad de Negocio del inventario',
+};
+
 // Resuelve, una sola vez por hoja, qué encabezado real corresponde a cada campo.
 function buildHeaderIndex(headers) {
     const index = {};
@@ -87,8 +103,12 @@ function convert(excelPath) {
     if (!rows.length) throw new Error('La hoja está vacía');
 
     const H = buildHeaderIndex(Object.keys(rows[0]));
-    if (!H.sku || !H.descripcion) {
-        throw new Error('No se encontraron las columnas CODIGO SKU / DESCRIPCION');
+    const faltantes = Object.entries(COLUMNAS_REQUERIDAS)
+        .filter(([campo]) => H[campo] === undefined)
+        .map(([, etiqueta]) => etiqueta);
+    if (faltantes.length) {
+        throw new Error('No es el reporte de existencias. Faltan estas columnas: '
+            + faltantes.join(', '));
     }
     const val = (row, field) => (H[field] === undefined ? '' : row[H[field]]);
     const str = (v) => (v === undefined || v === null ? '' : String(v).trim());
