@@ -516,14 +516,34 @@
             local: { texto: 'Solo en este equipo', clase: 'text-amber-600 dark:text-amber-400' },
         };
 
-        function marcarEstadoSync(tipo, cuando) {
+        const ESTADO_KEY = 'estadoSync';
+
+        function marcarEstadoSync(tipo, cuando, recordar) {
             const estado = ESTADOS_SYNC[tipo];
             if (!estado) return;
-            const hora = (cuando || new Date())
-                .toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
+            const fecha = cuando || new Date();
+            const hora = fecha.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
             const el = document.getElementById('estado-sync');
             el.className = 'shrink-0 ml-auto font-semibold ' + estado.clase;
             el.textContent = estado.texto + ' ' + hora;
+
+            // Se guarda aparte del catalogo, en localStorage: son dos datos y asi no
+            // hay que reescribir los 4 MB de productos solo para anotar el estado.
+            if (recordar === false) return;
+            try {
+                localStorage.setItem(ESTADO_KEY, JSON.stringify({ tipo, cuando: fecha.toISOString() }));
+            } catch (e) { /* navegacion privada: se pierde al cerrar, no importa */ }
+        }
+
+        // Al abrir con la base ya guardada hay que volver a pintarlo: si no, el
+        // indicador sale vacio y no se sabe si este equipo esta al dia.
+        function restaurarEstadoSync() {
+            try {
+                const guardado = JSON.parse(localStorage.getItem(ESTADO_KEY) || 'null');
+                if (guardado && ESTADOS_SYNC[guardado.tipo]) {
+                    marcarEstadoSync(guardado.tipo, new Date(guardado.cuando), false);
+                }
+            } catch (e) { /* sin estado previo */ }
 
             // El lector handheld escribe el UPC y manda Enter: el campo debe
             // estar enfocado sin que nadie lo toque. En movil no se enfoca solo
@@ -565,6 +585,7 @@
                 if (cached && cached.productos && cached.productos.length) {
                     if (cached.schema === CATALOG_SCHEMA) {
                         setCatalog(cached.productos, cached.metadata, cached.tiendas);
+                        restaurarEstadoSync();
                         buscarActualizacion(cached.metadata);   // en segundo plano
                         return;
                     }
