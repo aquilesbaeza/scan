@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-10-12T12:55:20.290Z",
-  "origen": "CR 12 10 2026.xlsx",
-  "origenFecha": "2026-10-12T06:00:00.000Z",
-  "total_productos": 13318,
-  "total_codigos_barras": 16752,
+  "timestamp": "2026-10-14T13:00:00.153Z",
+  "origen": "CR 14 10 2026.xlsx",
+  "origenFecha": "2026-10-14T06:00:00.000Z",
+  "total_productos": 13319,
+  "total_codigos_barras": 16753,
   "total_tiendas": 8,
-  "total_unidades": 1086139,
+  "total_unidades": 1092982,
   "version": "3.0",
   "status": "actualizado"
 }
